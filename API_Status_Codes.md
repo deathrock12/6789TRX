@@ -1,37 +1,37 @@
 # API Status Codes & Error Reference
 
-> Tài liệu này mô tả tất cả các trường hợp lỗi có thể xảy ra khi gọi API 6789TRX.
-> Mọi response lỗi đều theo cấu trúc thống nhất với `errorCode` để xử lý phía client.
+> This document describes all possible error cases when calling the 6789TRX API.
+> Every error response follows a unified structure with an `errorCode` for client-side handling.
 
 ---
 
-## Cấu trúc Response lỗi
+## Error Response Structure
 
 ```json
 {
   "success": false,
   "data": null,
   "errorCode": "ERROR_CODE",
-  "message": "Mô tả lỗi chi tiết"
+  "message": "Detailed error description"
 }
 ```
 
 ---
 
-## Bảng tổng hợp HTTP Status Code
+## HTTP Status Code Summary
 
-| HTTP Code | Ý nghĩa | Khi nào xảy ra |
-|-----------|---------|---------------|
-| `200` | Thành công | Request được xử lý thành công |
-| `400` | Bad Request | Request thiếu hoặc sai định dạng |
-| `401` | Unauthorized | API Key thiếu, không hợp lệ, hoặc hết hạn |
-| `422` | Unprocessable Entity | Request hợp lệ nhưng không thể thực hiện được (hết quota, hết hạn hợp đồng...) |
-| `429` | Too Many Requests | Vượt quá rate limit |
-| `500` | Internal Server Error | Lỗi hệ thống nội bộ |
+| HTTP Code | Meaning | When it occurs |
+|-----------|---------|----------------|
+| `200` | Success | Request was processed successfully |
+| `400` | Bad Request | Request is missing fields or has an invalid format |
+| `401` | Unauthorized | API Key is missing, invalid, or expired |
+| `422` | Unprocessable Entity | Request is valid but cannot be executed (quota exhausted, contract expired...) |
+| `429` | Too Many Requests | Rate limit exceeded |
+| `500` | Internal Server Error | Internal system error |
 
 ---
 
-## Chi tiết từng Error Code
+## Error Code Details
 
 ### 🔴 400 — Bad Request
 
@@ -46,8 +46,8 @@
   "message": "WalletAddress is required."
 }
 ```
-**Nguyên nhân:** Field `walletAddress` bị bỏ trống hoặc không có trong request body.  
-**Xử lý:** Kiểm tra lại request body, đảm bảo `walletAddress` không rỗng.
+**Cause:** The `walletAddress` field is empty or missing from the request body.  
+**Resolution:** Check the request body and ensure `walletAddress` is not empty.
 
 ---
 
@@ -60,8 +60,8 @@
   "message": "..."
 }
 ```
-**Nguyên nhân:** Request body không đúng định dạng JSON, hoặc giá trị không hợp lệ.  
-**Xử lý:** Kiểm tra `Content-Type: application/json` và format của request body.
+**Cause:** The request body is not valid JSON, or a field value is invalid.  
+**Resolution:** Verify `Content-Type: application/json` and the format of the request body.
 
 ---
 
@@ -78,8 +78,8 @@
   "message": "Authorization header with Bearer token is required"
 }
 ```
-**Nguyên nhân:** Request không có header `Authorization` hoặc `X-API-Key`.  
-**Xử lý:** Thêm header `Authorization: Bearer {api_key}` vào mọi request.
+**Cause:** The request does not include an `Authorization` or `X-API-Key` header.  
+**Resolution:** Add the header `Authorization: Bearer {api_key}` to every request.
 
 ---
 
@@ -92,17 +92,17 @@
   "message": "Invalid or expired API key"
 }
 ```
-**Nguyên nhân:** API Key không tồn tại trong hệ thống, bị vô hiệu hóa, hoặc đã hết hạn.  
-**Xử lý:**
-- Kiểm tra lại API Key có đúng không (copy/paste lại từ nguồn gốc)
-- API Key có thể đã bị admin deactivate — liên hệ support
-- Key có thể đã hết `ExpiryDays`
+**Cause:** The API Key does not exist in the system, has been deactivated, or has expired.  
+**Resolution:**
+- Verify the API Key is correct (copy/paste again from the original source)
+- The API Key may have been deactivated by an admin — contact support
+- The key may have exceeded its `ExpiryDays`
 
 ---
 
 ### 🔴 422 — Unprocessable Entity
 
-> Các lỗi này xảy ra khi API Key hợp lệ nhưng không thể thực hiện lệnh delegate do ràng buộc nghiệp vụ.
+> These errors occur when the API Key is valid but the delegate command cannot be executed due to business logic constraints.
 
 ---
 
@@ -115,8 +115,8 @@
   "message": "No active contract found for this API key."
 }
 ```
-**Nguyên nhân:** API Key chưa được gán vào hợp đồng nào (Contract) trong hệ thống.  
-**Xử lý:** Liên hệ admin để cấu hình Contract cho API Key.
+**Cause:** The API Key has not been assigned to any Contract in the system.  
+**Resolution:** Contact the admin to configure a Contract for this API Key.
 
 ---
 
@@ -129,8 +129,8 @@
   "message": "Your contract has expired. Please contact support."
 }
 ```
-**Nguyên nhân:** Hợp đồng (Contract) đã vượt quá ngày hết hạn.  
-**Xử lý:** Liên hệ admin để gia hạn hoặc tạo mới Contract.
+**Cause:** The Contract has passed its expiration date.  
+**Resolution:** Contact the admin to renew or create a new Contract.
 
 ---
 
@@ -143,11 +143,11 @@
   "message": "Insufficient commands remaining in your contract."
 }
 ```
-**Nguyên nhân:** Hợp đồng đã dùng hết số lệnh được phép.
-- Single: tốn 1 lệnh
-- Double: tốn 2 lệnh  
+**Cause:** The Contract has used up all its allocated commands.
+- Single: costs 1 command
+- Double: costs 2 commands  
 
-**Xử lý:** Liên hệ admin để nạp thêm lệnh vào Contract.
+**Resolution:** Contact the admin to top up commands for the Contract.
 
 ---
 
@@ -160,11 +160,11 @@
   "message": "External delegate failed: ..."
 }
 ```
-**Nguyên nhân:** Hệ thống backend delegate (TRON node) từ chối hoặc không phản hồi.  
-**Xử lý:**
-- Retry sau vài giây
-- Nếu lỗi liên tục (> 5 phút), liên hệ support kèm `requestId`
-- **Lưu ý:** Lệnh KHÔNG bị trừ khi `EXTERNAL_ERROR` xảy ra
+**Cause:** The backend delegate system (TRON node) rejected or did not respond.  
+**Resolution:**
+- Retry after a few seconds
+- If the error persists (> 5 minutes), contact support with the `requestId`
+- **Note:** Commands are **NOT deducted** when `EXTERNAL_ERROR` occurs
 
 ---
 
@@ -181,15 +181,15 @@
   "message": "Rate limit exceeded. Please try again later."
 }
 ```
-**Nguyên nhân:** API Key đã vượt quá số lệnh cho phép trong 1 giờ.  
-**Response headers đi kèm:**
+**Cause:** The API Key has exceeded the allowed number of commands per hour.  
+**Response headers included:**
 ```http
 X-RateLimit-Limit: 1000
 X-RateLimit-Remaining: 0
 X-RateLimit-Reset: 2026-04-12T02:00:00.000Z
 Retry-After: 1847
 ```
-**Xử lý:** Chờ đến thời điểm `X-RateLimit-Reset` hoặc sau `Retry-After` giây.
+**Resolution:** Wait until `X-RateLimit-Reset` or after `Retry-After` seconds.
 
 ---
 
@@ -202,8 +202,8 @@ Retry-After: 1847
   "message": "Your IP has been blocked. Contact support if this is a mistake."
 }
 ```
-**Nguyên nhân:** IP của bạn bị hệ thống tự động block do phát hiện hành vi bất thường (quá nhiều request trong thời gian ngắn, quá nhiều lần auth thất bại).  
-**Xử lý:** Liên hệ support kèm địa chỉ IP để được mở khóa.
+**Cause:** Your IP was automatically blocked by the system due to abnormal behavior (too many requests in a short time, too many failed auth attempts).  
+**Resolution:** Contact support with your IP address to get it unblocked.
 
 ---
 
@@ -216,8 +216,8 @@ Retry-After: 1847
   "message": "Too many requests. Your IP will be temporarily blocked."
 }
 ```
-**Nguyên nhân:** IP vượt quá 15 request/giây — ngưỡng phát hiện DDoS.  
-**Xử lý:** Giảm tần suất gọi API. IP sẽ tự mở khóa sau 1–60 phút tùy số lần vi phạm.
+**Cause:** The IP exceeded 15 requests/second — the DDoS detection threshold.  
+**Resolution:** Reduce your API call frequency. The IP will be automatically unblocked after 1–60 minutes depending on the number of violations.
 
 ---
 
@@ -234,66 +234,66 @@ Retry-After: 1847
   "message": "An unexpected error occurred"
 }
 ```
-**Nguyên nhân:** Lỗi nội bộ không mong muốn (database timeout, exception chưa xử lý...).  
-**Xử lý:**
-- Retry sau 5–10 giây
-- Nếu lỗi liên tục, liên hệ support kèm `requestId`
-- **Lệnh KHÔNG bị trừ** khi `INTERNAL_ERROR` xảy ra
+**Cause:** An unexpected internal error (database timeout, unhandled exception...).  
+**Resolution:**
+- Retry after 5–10 seconds
+- If the error persists, contact support with the `requestId`
+- **Commands are NOT deducted** when `INTERNAL_ERROR` occurs
 
 ---
 
-## Sơ đồ xử lý lỗi phía client
+## Client-Side Error Handling Flowchart
 
 ```
-Gọi API
+Call API
   │
-  ├─ 200 ──→ Thực hiện giao dịch TRON trong 5 phút ✅
+  ├─ 200 ──→ Execute the TRON transaction within 5 minutes ✅
   │
-  ├─ 400 ──→ Sửa request, không retry
+  ├─ 400 ──→ Fix the request, do not retry
   │
-  ├─ 401 ──→ Kiểm tra API Key
-  │            ├─ MISSING_AUTH     → Thêm header Authorization
-  │            └─ INVALID_API_KEY  → Liên hệ admin
+  ├─ 401 ──→ Check API Key
+  │            ├─ MISSING_AUTH     → Add Authorization header
+  │            └─ INVALID_API_KEY  → Contact admin
   │
-  ├─ 422 ──→ Không thể xử lý
-  │            ├─ CONTRACT_NOT_FOUND    → Liên hệ admin
-  │            ├─ CONTRACT_EXPIRED     → Liên hệ admin gia hạn
-  │            ├─ INSUFFICIENT_COMMANDS → Liên hệ admin nạp thêm
-  │            └─ EXTERNAL_ERROR       → Retry sau 5s (tối đa 3 lần)
+  ├─ 422 ──→ Cannot be processed
+  │            ├─ CONTRACT_NOT_FOUND    → Contact admin
+  │            ├─ CONTRACT_EXPIRED     → Contact admin to renew
+  │            ├─ INSUFFICIENT_COMMANDS → Contact admin to top up
+  │            └─ EXTERNAL_ERROR       → Retry after 5s (max 3 attempts)
   │
-  ├─ 429 ──→ Chờ theo Retry-After header rồi retry
+  ├─ 429 ──→ Wait per Retry-After header then retry
   │
-  └─ 500 ──→ Retry sau 10s (tối đa 3 lần) → Liên hệ support
+  └─ 500 ──→ Retry after 10s (max 3 attempts) → Contact support
 ```
 
 ---
 
-## Ghi chú về Retry
+## Retry Notes
 
-| Error Code | Có nên Retry? | Khoảng chờ |
-|------------|--------------|------------|
-| `WALLET_REQUIRED` | ❌ Không | — |
-| `BAD_REQUEST` | ❌ Không | — |
-| `MISSING_AUTH` | ❌ Không | — |
-| `INVALID_API_KEY` | ❌ Không | — |
-| `CONTRACT_NOT_FOUND` | ❌ Không | — |
-| `CONTRACT_EXPIRED` | ❌ Không | — |
-| `INSUFFICIENT_COMMANDS` | ❌ Không | — |
-| `EXTERNAL_ERROR` | ✅ Có | 5s, tối đa 3 lần |
-| `RATE_LIMIT_EXCEEDED` | ✅ Có | Theo `Retry-After` |
-| `TOO_MANY_REQUESTS` | ✅ Có | 60s |
-| `IP_BLOCKED` | ❌ Không (liên hệ support) | — |
-| `INTERNAL_ERROR` | ✅ Có | 10s, tối đa 3 lần |
+| Error Code | Should Retry? | Wait Time |
+|------------|--------------|-----------|
+| `WALLET_REQUIRED` | ❌ No | — |
+| `BAD_REQUEST` | ❌ No | — |
+| `MISSING_AUTH` | ❌ No | — |
+| `INVALID_API_KEY` | ❌ No | — |
+| `CONTRACT_NOT_FOUND` | ❌ No | — |
+| `CONTRACT_EXPIRED` | ❌ No | — |
+| `INSUFFICIENT_COMMANDS` | ❌ No | — |
+| `EXTERNAL_ERROR` | ✅ Yes | 5s, max 3 attempts |
+| `RATE_LIMIT_EXCEEDED` | ✅ Yes | Per `Retry-After` |
+| `TOO_MANY_REQUESTS` | ✅ Yes | 60s |
+| `IP_BLOCKED` | ❌ No (contact support) | — |
+| `INTERNAL_ERROR` | ✅ Yes | 10s, max 3 attempts |
 
 ---
 
-## Lưu ý quan trọng về tính phí
+## Important Notes on Billing
 
-| Tình huống | Có bị trừ lệnh? |
-|------------|----------------|
-| Request thành công (200) | ✅ Trừ 1 hoặc 2 lệnh |
-| `EXTERNAL_ERROR` | ❌ Không trừ |
-| `INTERNAL_ERROR` | ❌ Không trừ |
-| `CONTRACT_*` | ❌ Không trừ |
-| `RATE_LIMIT_EXCEEDED` | ❌ Không trừ |
-| `401` / `400` | ❌ Không trừ |
+| Scenario | Command deducted? |
+|----------|-------------------|
+| Successful request (200) | ✅ 1 or 2 commands deducted |
+| `EXTERNAL_ERROR` | ❌ Not deducted |
+| `INTERNAL_ERROR` | ❌ Not deducted |
+| `CONTRACT_*` | ❌ Not deducted |
+| `RATE_LIMIT_EXCEEDED` | ❌ Not deducted |
+| `401` / `400` | ❌ Not deducted |
