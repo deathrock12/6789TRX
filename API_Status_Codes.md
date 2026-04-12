@@ -185,7 +185,6 @@
 **Response headers included:**
 ```http
 X-RateLimit-Limit: 1000
-X-RateLimit-Remaining: 0
 X-RateLimit-Reset: 2026-04-12T02:00:00.000Z
 Retry-After: 1847
 ```

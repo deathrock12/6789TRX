@@ -252,7 +252,6 @@ After each authenticated request, the response includes the following headers:
 
 ```http
 X-RateLimit-Limit: 1000
-X-RateLimit-Remaining: 847
 X-RateLimit-Reset: 2026-04-12T11:00:00.000Z
 Retry-After: 1847          (only present when receiving a 429)
 ```
@@ -260,11 +259,8 @@ Retry-After: 1847          (only present when receiving a 429)
 | Header | Description |
 |--------|-------------|
 | `X-RateLimit-Limit` | Maximum number of calls allowed per hour (UTC+7) |
-| `X-RateLimit-Remaining` | Remaining calls in the **current hour** |
 | `X-RateLimit-Reset` | Time when the counter resets to the next hour (ISO 8601, UTC) |
 | `Retry-After` | Seconds to wait — only present when receiving a 429 |
-
-> A Double request consumes **2 slots** from `X-RateLimit-Remaining`.
 
 ### Important Notes on the 2 Quota Types
 
@@ -272,10 +268,10 @@ The system has **2 independent limits**:
 
 | Type | Header | Resets when | When exceeded |
 |------|--------|-------------|---------------|
-| **Hourly Rate Limit** | `X-RateLimit-Remaining` | Start of each UTC+7 hour | 429 `RATE_LIMIT_EXCEEDED` |
+| **Hourly Rate Limit** | *(not exposed)* | Start of each UTC+7 hour | 429 `RATE_LIMIT_EXCEEDED` |
 | **Contract Quota** | *(not exposed)* | When admin tops up | 422 `INSUFFICIENT_COMMANDS` |
 
-- **Hourly Rate Limit** — counts the number of requests in the current hour, resets automatically every hour. Reflected by `X-RateLimit-Remaining`.
+- **Hourly Rate Limit** — counts the number of requests in the current hour, resets automatically every hour.
 - **Contract Quota** — total commands in your contract (counted from `EffectiveDate`). **No header exposes this value.** When exhausted, the API returns 422 `INSUFFICIENT_COMMANDS`. Contact [@trx_savings](https://t.me/trx_savings) to check or top up.
 
 ---
@@ -583,9 +579,6 @@ A: Use Single for standard TRC-20 transfers (USDT, USDC...). Use Double if the t
 
 **Q: Is a command deducted for `EXTERNAL_ERROR`?**  
 A: No. Only successful requests (HTTP 200) result in a command being deducted.
-
-**Q: How do I know how many commands remain in the current hour?**  
-A: Check the `X-RateLimit-Remaining` header in any response — this is the number of calls remaining in the current hour (resets each UTC+7 hour).
 
 **Q: How do I know how many contract quota commands remain?**  
 A: Currently, the API **does not expose** contract quota via any header. When the quota is exhausted, you will receive a 422 `INSUFFICIENT_COMMANDS`. To check your remaining contract commands, contact [@trx_savings](https://t.me/trx_savings).
