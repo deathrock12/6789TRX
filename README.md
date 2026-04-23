@@ -1,4 +1,4 @@
-# API Integration Guide — 6789TRX Energy Service
+# API Integration Guide — TRON Network Fee Reduction Service
 
 > **Version:** 1.0  
 > **Base URL:** `https://api.6789trx.com`  
@@ -10,7 +10,9 @@
 
 ### 1.1 System Overview
 
-**6789TRX** is an **Energy rental service on the TRON network** — significantly reducing TRC-20 transaction costs.
+We offer an **Energy rental service on the TRON network** — significantly reducing TRC-20 transaction costs.
+
+**6789TRX** acts as a liquidity pool that holds a large amount of frozen TRX, generating Energy that is delegated to your wallet on demand. You only pay a small service fee per transaction instead of burning TRX yourself.
 
 #### Why do you need Energy?
 
@@ -45,8 +47,8 @@ After 5 minutes → Energy is automatically reclaimed to the pool
 
 | Type | Endpoint | Energy Delegated | Use when |
 |------|----------|------------------|----------|
-| **Single** | `POST /api/v1/resources/single` | Base level | Standard TRC-20 transfer (USDT, USDC...) |
-| **Double** | `POST /api/v1/resources/double` | Double amount | Complex contract interactions, or 2 consecutive transactions |
+| **Single** | `POST /api/v1/resources/single` | Base level **~65,000 Energy** | Transferring USDT/TRC-20 tokens to a **personal wallet with an existing balance > 0** |
+| **Double** | `POST /api/v1/resources/double` | Double amount **~130,000 Energy** | Transferring USDT/TRC-20 tokens to an **exchange wallet** or any **wallet with a balance of 0** (first-time activation requires more Energy) |
 
 > ⚠️ **Important:** Energy only exists for **5 minutes** after delegation.  
 > If not used within 5 minutes, the Energy is reclaimed and **the order is still charged**.
