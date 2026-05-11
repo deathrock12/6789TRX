@@ -12,7 +12,7 @@
 
 We offer an **Energy rental service on the TRON network** — significantly reducing TRC-20 transaction costs.
 
-**6789TRX** acts as a liquidity pool that holds a large amount of frozen TRX, generating Energy that is delegated to your wallet on demand. You only pay a small service fee per transaction instead of burning TRX yourself.
+**Our** acts as a liquidity pool that holds a large amount of frozen TRX, generating Energy that is delegated to your wallet on demand. You only pay a small service fee per transaction instead of burning TRX yourself.
 
 #### Why do you need Energy?
 
@@ -20,12 +20,12 @@ The TRON network charges transaction fees based on 2 types of resources:
 
 | Resource | Used for | If insufficient |
 |----------|----------|-----------------|
-| **Bandwidth** | All transactions | Costs ~268 TRX |
+| **Bandwidth** | All transactions | Costs 0.1 - 2 TRX |
 | **Energy** | Smart contracts (TRC-20 transfer, swap...) | Costs 13–65 TRX/transaction |
 
 To obtain Energy, users typically need to **freeze TRX** (lock capital) or **burn TRX** directly. Both approaches are costly.
 
-#### The 6789TRX Solution
+#### Our solution
 
 Instead of acquiring Energy yourself, you **rent it temporarily from our pool**:
 
