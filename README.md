@@ -65,27 +65,24 @@ https://api.6789trx.com
 
 ## 2. Authentication
 
-### 2.1 Authentication Type
+### Authentication Type
+The API uses an API Key — passed via HTTP header.
 
-The API uses **API Key** — passed via HTTP header.
-
-### 2.2 Obtaining an API Key
-
-Contact via Telegram: [@trx_savings](https://t.me/trx_savings) to receive an API Key.
+### Obtaining an API Key
+To obtain an API Key, you need to purchase an API integration package. If you are unsure where to purchase it, please contact via Telegram: [@trx_savings](https://t.me/trx_savings) for support.
 
 API Key format:
 ```
-pas_sk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+pas_sk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-### 2.3 How to Pass the API Key
-
-**Method 1 — Bearer Token (recommended):**
+### How to Pass the API Key
+Method 1 — Bearer Token (recommended):
 ```http
 Authorization: Bearer pas_sk_your_key_here
 ```
 
-### 2.4 Security Notes
+### Security Notes
 
 - ❌ **Do not** embed the API Key in client-side code (browser, mobile app)
 - ❌ **Do not** commit the API Key to Git
