@@ -1,8 +1,8 @@
 # API Integration Guide — TRON Network Fee Reduction Service
 
-> **Version:** 1.1 
+> **Version:** 1.2 
 > **Base URL:** `https://enterprise-api.watchlist.win`  
-> **Last Updated:** August 2026
+> **Last Updated:** November 2026
 
 ---
 
@@ -160,20 +160,42 @@ Content-Type: application/json
   "success": true,
   "data": {
     "success": true,
-    "requestId": "0HN8K2QJ4P3VS:00000001",
+    "data": {
+      "requestId": "0HNQ1790C3TET:00000001",
+      "externalRequestId": "56bdd271-b41e-46a7-b3d5-896d9f0f1733",
+      "timestamp": "2026-11-13T10:57:39.4835705"
+    },
+    "errorMessage": null,
+    "requestId": "0HNQ1790C3TET:00000001",
     "processingTimeMs": 312,
-    "resourceType": 1
+    "resourceType": 1,
+    "remainingCommands": 39,
+    "unitPrice": {
+      "amount": 1.7,
+      "currency": "TRX"
+    },
+    "usageCount": 0
   },
+  "message": null,
   "errorCode": null,
-  "message": null
+  "traceId": "",
+  "timestamp": "2026-11-13T03:57:39.7986526Z"
 }
 ```
 
 | Field | Description |
 |-------|-------------|
 | `data.requestId` | ID for tracing/debugging the request |
+| `data.data.externalRequestId` | ID of the delegation on our TRON backend — include it when contacting support |
+| `data.data.timestamp` | Time the Energy was delegated (UTC+7) |
 | `data.processingTimeMs` | Processing time (ms) |
-| `data.resourceType` | `1` = Single |
+| `data.resourceType` | `1` = Single, `2` = Double |
+| `data.remainingCommands` | Commands remaining in your contract **after** this request |
+| `data.unitPrice.amount` | Unit price per command as stated in your contract (rounded to 2 decimals) |
+| `data.unitPrice.currency` | Currency of the unit price, as stated in your contract (`TRX` or `USDT`) |
+
+> 💡 `unitPrice` is the price **per command**. A Double request consumes 2 commands, so it costs `2 × unitPrice.amount`.  
+> The price is returned in your contract's own currency — it is **not** converted.
 
 ---
 
@@ -204,14 +226,30 @@ Content-Type: application/json
   "success": true,
   "data": {
     "success": true,
-    "requestId": "0HN8K2QJ4P3VS:00000002",
+    "data": {
+      "requestId": "0HNQ1790C3TET:00000002",
+      "externalRequestId": "8f0c2a91-3d4e-4b7a-9c1e-2f6a7b8c9d0e",
+      "timestamp": "2026-11-13T10:58:12.1020345"
+    },
+    "errorMessage": null,
+    "requestId": "0HNQ1790C3TET:00000002",
     "processingTimeMs": 287,
-    "resourceType": 2
+    "resourceType": 2,
+    "remainingCommands": 37,
+    "unitPrice": {
+      "amount": 1.7,
+      "currency": "TRX"
+    },
+    "usageCount": 0
   },
+  "message": null,
   "errorCode": null,
-  "message": null
+  "traceId": "",
+  "timestamp": "2026-11-13T03:58:12.4150218Z"
 }
 ```
+
+The response fields are the same as [Single Delegate](#41-single-delegate).
 
 ---
 
@@ -268,10 +306,10 @@ The system has **2 independent limits**:
 | Type | Header | Resets when | When exceeded |
 |------|--------|-------------|---------------|
 | **Hourly Rate Limit** | *(not exposed)* | Start of each UTC+7 hour | 429 `RATE_LIMIT_EXCEEDED` |
-| **Contract Quota** | *(not exposed)* | When admin tops up | 422 `INSUFFICIENT_COMMANDS` |
+| **Contract Quota** | *(not a header — see `remainingCommands` in the response body)* | When admin tops up | 422 `INSUFFICIENT_COMMANDS` |
 
 - **Hourly Rate Limit** — counts the number of requests in the current hour, resets automatically every hour.
-- **Contract Quota** — total commands in your contract (counted from `EffectiveDate`). **No header exposes this value.** When exhausted, the API returns 422 `INSUFFICIENT_COMMANDS`. Contact [@askemily](https://t.me/askemily) to check or top up.
+- **Contract Quota** — total commands in your contract (counted from `EffectiveDate`). Every successful Single/Double response returns `data.remainingCommands` — the commands left **after** that request. When exhausted, the API returns 422 `INSUFFICIENT_COMMANDS`. Contact [@askemily](https://t.me/askemily) to top up.
 
 ---
 
@@ -497,9 +535,14 @@ type DelegateResponse struct {
     ErrorCode string `json:"errorCode"`
     Message   string `json:"message"`
     Data      *struct {
-        RequestID        string `json:"requestId"`
-        ProcessingTimeMs int    `json:"processingTimeMs"`
-        ResourceType     int    `json:"resourceType"`
+        RequestID         string `json:"requestId"`
+        ProcessingTimeMs  int    `json:"processingTimeMs"`
+        ResourceType      int    `json:"resourceType"`
+        RemainingCommands int64  `json:"remainingCommands"`
+        UnitPrice         *struct {
+            Amount   float64 `json:"amount"`
+            Currency string  `json:"currency"`
+        } `json:"unitPrice"`
     } `json:"data"`
 }
 
@@ -580,7 +623,10 @@ A: Use Single for standard TRC-20 transfers (USDT, USDC...). Use Double if the t
 A: No. Only successful requests (HTTP 200) result in a command being deducted.
 
 **Q: How do I know how many contract quota commands remain?**  
-A: Currently, the API **does not expose** contract quota via any header. When the quota is exhausted, you will receive a 422 `INSUFFICIENT_COMMANDS`. To check your remaining contract commands, contact [@askemily](https://t.me/askemily).
+A: Read `data.remainingCommands` from any successful Single/Double response — it is the number of commands left **after** that request. When the quota is exhausted, you will receive a 422 `INSUFFICIENT_COMMANDS`. To top up, contact [@askemily](https://t.me/askemily).
+
+**Q: How much does each command cost?**  
+A: Read `data.unitPrice` from any successful Single/Double response. It is the per-command price in your contract's currency (`TRX` or `USDT`), exactly as stated in your contract. A Double request consumes 2 commands.
 
 **Q: My IP is blocked — what should I do?**  
 A: Contact support via Telegram with your IP address to get it unblocked.
