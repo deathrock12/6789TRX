@@ -1,6 +1,6 @@
 # API Integration Guide — TRON Network Fee Reduction Service
 
-> **Version:** 1.2 
+> **Version:** 1.3 
 > **Base URL:** `https://enterprise-api.watchlist.win`  
 > **Last Updated:** November 2026
 
@@ -43,12 +43,13 @@ After 5 minutes → Energy is automatically reclaimed to the pool
 
 ---
 
-### 1.2 Two Order Types
+### 1.2 Order Types
 
-| Type | Endpoint | Energy Delegated | Use when |
-|------|----------|------------------|----------|
-| **Single** | `POST /api/v1/resources/single` | Base level **~65,000 Energy** | Transferring USDT/TRC-20 tokens to a **personal wallet with an existing balance > 0** |
-| **Double** | `POST /api/v1/resources/double` | Double amount **~130,000 Energy** | Transferring USDT/TRC-20 tokens to an **exchange wallet** or any **wallet with a balance of 0** (first-time activation requires more Energy) |
+| Type | Endpoint | Energy Delegated | Commands charged | Use when |
+|------|----------|------------------|------------------|----------|
+| **Single** | `POST /api/v1/resources/single` | Base level **~65,000 Energy** | 1 | Transferring USDT/TRC-20 tokens to a **personal wallet with an existing balance > 0** |
+| **Double** | `POST /api/v1/resources/double` | Double amount **~130,000 Energy** | 2 | Transferring USDT/TRC-20 tokens to an **exchange wallet** or any **wallet with a balance of 0** (first-time activation requires more Energy) |
+| **Custom** | `POST /api/v1/resources/custom-energy` | **Exactly the amount you request** (`energyAmount`) | `ceil(energyAmount / 65 000)` | A single transaction that needs a specific amount of Energy (e.g. a heavy smart contract call, swap) |
 
 > ⚠️ **Important:** Energy only exists for **5 minutes** after delegation.  
 > If not used within 5 minutes, the Energy is reclaimed and **the order is still charged**.
@@ -122,7 +123,7 @@ All responses return JSON in a unified structure:
 | `400` | Malformed request or missing field |
 | `401` | Missing or invalid API Key |
 | `422` | Valid request but cannot be processed (quota exhausted, contract expired...) |
-| `429` | Rate limit exceeded |
+| `429` | Too many requests from your IP (> 15 requests/second) or IP blocked |
 | `500` | Internal server error |
 
 ---
@@ -169,6 +170,7 @@ Content-Type: application/json
     "requestId": "0HNQ1790C3TET:00000001",
     "processingTimeMs": 312,
     "resourceType": 1,
+    "commandsCharged": 1,
     "remainingCommands": 39,
     "unitPrice": {
       "amount": 1.7,
@@ -189,12 +191,13 @@ Content-Type: application/json
 | `data.data.externalRequestId` | ID of the delegation on our TRON backend — include it when contacting support |
 | `data.data.timestamp` | Time the Energy was delegated (UTC+7) |
 | `data.processingTimeMs` | Processing time (ms) |
-| `data.resourceType` | `1` = Single, `2` = Double |
+| `data.resourceType` | `1` = Single, `2` = Double, `4` = Custom |
+| `data.commandsCharged` | Commands deducted by **this** request (Single = 1, Double = 2, Custom = see [4.3](#43-custom-energy)) |
 | `data.remainingCommands` | Commands remaining in your contract **after** this request |
 | `data.unitPrice.amount` | Unit price per command as stated in your contract (rounded to 2 decimals) |
 | `data.unitPrice.currency` | Currency of the unit price, as stated in your contract (`TRX` or `USDT`) |
 
-> 💡 `unitPrice` is the price **per command**. A Double request consumes 2 commands, so it costs `2 × unitPrice.amount`.  
+> 💡 `unitPrice` is the price **per command**. A request costs `commandsCharged × unitPrice.amount` — e.g. a Double request consumes 2 commands, so it costs `2 × unitPrice.amount`.  
 > The price is returned in your contract's own currency — it is **not** converted.
 
 ---
@@ -235,6 +238,7 @@ Content-Type: application/json
     "requestId": "0HNQ1790C3TET:00000002",
     "processingTimeMs": 287,
     "resourceType": 2,
+    "commandsCharged": 2,
     "remainingCommands": 37,
     "unitPrice": {
       "amount": 1.7,
@@ -250,6 +254,86 @@ Content-Type: application/json
 ```
 
 The response fields are the same as [Single Delegate](#41-single-delegate).
+
+---
+
+### 4.3 Custom Energy
+
+```
+POST /api/v1/resources/custom-energy
+```
+
+**Description:** Delegates **exactly the amount of Energy you specify** — for one transaction that needs more (or a specific amount of) Energy than Single/Double, such as a heavy smart contract interaction.
+
+**Commands charged:** `ceil(energyAmount / 65 000)` — the amount is rounded **up** to whole commands:
+
+| `energyAmount` | Commands charged |
+|----------------|------------------|
+| 65,000 | 1 |
+| 100,000 | 2 |
+| 200,000 | 4 |
+| 1,000,000 | 16 |
+
+**Limits:** `energyAmount` must be between **65,000** and **1,000,000** Energy per request. Requests outside this range are rejected with 400 `INVALID_ENERGY_AMOUNT` and **no command is deducted**.
+
+**Bandwidth:** if your contract includes Bandwidth coverage, a Custom request receives the same Bandwidth as a Single request — enough for **1 USDT (TRC-20) transfer** (~350 Bandwidth). Use the delegated Energy in one transaction. Additional transactions on the same wallet, or a single transaction larger than a standard USDT transfer (batch/multi-send, contract deployment, multi-signature...), will burn TRX for Bandwidth at your own cost.
+
+**Request Headers:**
+```http
+Authorization: Bearer {api_key}
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "walletAddress": "TRxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "energyAmount": 200000
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `walletAddress` | string | ✅ | TRON wallet address to receive Energy (must start with `T`) |
+| `energyAmount` | integer | ✅ | Amount of Energy to delegate, from **65,000** to **1,000,000** |
+
+**Response (200 — Success):**
+```json
+{
+  "success": true,
+  "data": {
+    "success": true,
+    "data": {
+      "requestId": "0HNQ1790C3TET:00000003",
+      "externalRequestId": "c3d9e1f2-7a4b-4c8d-9e0f-1a2b3c4d5e6f",
+      "timestamp": "2026-11-17T15:30:12.3450000"
+    },
+    "errorMessage": null,
+    "requestId": "0HNQ1790C3TET:00000003",
+    "processingTimeMs": 341,
+    "resourceType": 4,
+    "commandsCharged": 4,
+    "energyAmount": 200000,
+    "remainingCommands": 33,
+    "unitPrice": {
+      "amount": 1.7,
+      "currency": "TRX"
+    },
+    "usageCount": 0
+  },
+  "message": null,
+  "errorCode": null,
+  "traceId": "",
+  "timestamp": "2026-11-17T08:30:12.6780000Z"
+}
+```
+
+The response fields are the same as [Single Delegate](#41-single-delegate), plus:
+
+| Field | Description |
+|-------|-------------|
+| `data.energyAmount` | Energy delegated by this request (only present for Custom) |
+| `data.commandsCharged` | Commands deducted — in the example above `ceil(200 000 / 65 000) = 4`, costing `4 × unitPrice.amount` |
 
 ---
 
@@ -272,44 +356,30 @@ The response fields are the same as [Single Delegate](#41-single-delegate).
 | `MISSING_AUTH` | 401 | No Authorization header | Add the header |
 | `INVALID_API_KEY` | 401 | Wrong or disabled API Key | Contact support |
 | `WALLET_REQUIRED` | 400 | `walletAddress` is empty | Check the request |
+| `INVALID_ENERGY_AMOUNT` | 400 | Custom: `energyAmount` missing or outside 65,000 – 1,000,000 | Send an amount within the limits |
 | `CONTRACT_NOT_FOUND` | 422 | Key has no associated contract | Contact admin |
 | `CONTRACT_EXPIRED` | 422 | Contract has expired | Contact to renew |
 | `INSUFFICIENT_COMMANDS` | 422 | Quota commands exhausted | Contact to top up |
-| `EXTERNAL_ERROR` | 422 | Temporary TRON backend error | Retry after 5s |
-| `RATE_LIMIT_EXCEEDED` | 429 | Hourly limit exceeded | Wait per `Retry-After` |
+| `TOO_MANY_REQUESTS` | 429 | More than 15 requests/second from your IP | Slow down, wait per `Retry-After` |
+| `IP_BLOCKED` | 429 | IP blocked after repeated violations | Contact support |
+| `EXTERNAL_ERROR` | 500 | Temporary TRON backend error | Retry after 5s |
 | `INTERNAL_ERROR` | 500 | System error | Retry after 10s |
 
 > 📖 Full details for each error code: [API_Status_Codes.md](./API_Status_Codes.md)
 
 ---
 
-## 6. Rate Limit
+## 6. Rate Limit & Quota
 
-After each authenticated request, the response includes the following headers:
+There is **no hourly or daily request limit** per API Key. The system has **2 independent limits**:
 
-```http
-X-RateLimit-Limit: 1000
-X-RateLimit-Reset: 2026-04-12T11:00:00.000Z
-Retry-After: 1847          (only present when receiving a 429)
-```
+| Type | Limit | When exceeded |
+|------|-------|---------------|
+| **IP request rate** | **15 requests/second** per IP | 429 `TOO_MANY_REQUESTS`, then the IP is temporarily blocked |
+| **Contract Quota** | Commands in your contract (see `remainingCommands` in the response body) | 422 `INSUFFICIENT_COMMANDS` |
 
-| Header | Description |
-|--------|-------------|
-| `X-RateLimit-Limit` | Maximum number of calls allowed per hour (UTC+7) |
-| `X-RateLimit-Reset` | Time when the counter resets to the next hour (ISO 8601, UTC) |
-| `Retry-After` | Seconds to wait — only present when receiving a 429 |
-
-### Important Notes on the 2 Quota Types
-
-The system has **2 independent limits**:
-
-| Type | Header | Resets when | When exceeded |
-|------|--------|-------------|---------------|
-| **Hourly Rate Limit** | *(not exposed)* | Start of each UTC+7 hour | 429 `RATE_LIMIT_EXCEEDED` |
-| **Contract Quota** | *(not a header — see `remainingCommands` in the response body)* | When admin tops up | 422 `INSUFFICIENT_COMMANDS` |
-
-- **Hourly Rate Limit** — counts the number of requests in the current hour, resets automatically every hour.
-- **Contract Quota** — total commands in your contract (counted from `EffectiveDate`). Every successful Single/Double response returns `data.remainingCommands` — the commands left **after** that request. When exhausted, the API returns 422 `INSUFFICIENT_COMMANDS`. Contact [@askemily](https://t.me/askemily) to top up.
+- **IP request rate** — exceeding 15 requests/second blocks your IP: **1 minute** for the first violation, **1 hour** for the second, and **permanently** from the third (violation history is kept for 30 days). While blocked, every request returns 429 `IP_BLOCKED`. Both 429 responses include a `Retry-After` header (seconds). If you need a high request rate, queue your calls on your side.
+- **Contract Quota** — total commands in your contract (counted from `EffectiveDate`). Every successful Single/Double/Custom response returns `data.commandsCharged` and `data.remainingCommands` — the commands left **after** that request. When exhausted, the API returns 422 `INSUFFICIENT_COMMANDS`. Contact [@askemily](https://t.me/askemily) to top up.
 
 ---
 
@@ -335,8 +405,9 @@ The system has **2 independent limits**:
 ```
 Call API
   ├─ 200 → Execute the transaction immediately ✅
-  ├─ 422 EXTERNAL_ERROR → Retry after 5s (max 3 attempts)
-  ├─ 429 RATE_LIMIT_EXCEEDED → Wait per Retry-After header
+  ├─ 429 TOO_MANY_REQUESTS → Slow down, wait per Retry-After header
+  ├─ 429 IP_BLOCKED → Contact support
+  ├─ 500 EXTERNAL_ERROR → Retry after 5s (max 3 attempts)
   ├─ 500 INTERNAL_ERROR → Retry after 10s (max 3 attempts)
   └─ 401/400/422 (other) → Do not retry, review your config
 ```
@@ -538,6 +609,8 @@ type DelegateResponse struct {
         RequestID         string `json:"requestId"`
         ProcessingTimeMs  int    `json:"processingTimeMs"`
         ResourceType      int    `json:"resourceType"`
+        CommandsCharged   int64  `json:"commandsCharged"`
+        EnergyAmount      *int64 `json:"energyAmount"` // only present for Custom
         RemainingCommands int64  `json:"remainingCommands"`
         UnitPrice         *struct {
             Amount   float64 `json:"amount"`
@@ -598,7 +671,16 @@ curl -X POST https://enterprise-api.watchlist.win/api/v1/resources/single \
   -d '{"walletAddress": "TRxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}'
 ```
 
-### 9.3 Postman
+### 9.3 Test Custom Energy
+
+```bash
+curl -X POST https://enterprise-api.watchlist.win/api/v1/resources/custom-energy \
+  -H "Authorization: Bearer pas_sk_your_key_here" \
+  -H "Content-Type: application/json" \
+  -d '{"walletAddress": "TRxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "energyAmount": 200000}'
+```
+
+### 9.4 Postman
 
 Import the collection by creating an environment with:
 
@@ -619,14 +701,17 @@ A: The Energy is reclaimed to the pool and the command is still deducted. Make s
 **Q: Should I use Single or Double?**  
 A: Use Single for standard TRC-20 transfers (USDT, USDC...). Use Double if the transaction involves complex smart contracts or requires 2 consecutive transactions.
 
+**Q: When should I use Custom instead of Double?**  
+A: Use Custom when one transaction needs a specific amount of Energy that Single/Double do not match — e.g. 200,000 Energy for a heavy smart contract call. You are charged `ceil(energyAmount / 65 000)` commands, shown in `data.commandsCharged`. For ordinary TRC-20 transfers, Single/Double remain the cheapest choice.
+
 **Q: Is a command deducted for `EXTERNAL_ERROR`?**  
 A: No. Only successful requests (HTTP 200) result in a command being deducted.
 
 **Q: How do I know how many contract quota commands remain?**  
-A: Read `data.remainingCommands` from any successful Single/Double response — it is the number of commands left **after** that request. When the quota is exhausted, you will receive a 422 `INSUFFICIENT_COMMANDS`. To top up, contact [@askemily](https://t.me/askemily).
+A: Read `data.remainingCommands` from any successful Single/Double/Custom response — it is the number of commands left **after** that request. When the quota is exhausted, you will receive a 422 `INSUFFICIENT_COMMANDS`. To top up, contact [@askemily](https://t.me/askemily).
 
 **Q: How much does each command cost?**  
-A: Read `data.unitPrice` from any successful Single/Double response. It is the per-command price in your contract's currency (`TRX` or `USDT`), exactly as stated in your contract. A Double request consumes 2 commands.
+A: Read `data.unitPrice` from any successful Single/Double/Custom response. It is the per-command price in your contract's currency (`TRX` or `USDT`), exactly as stated in your contract. Each request costs `data.commandsCharged × unitPrice.amount` (Single = 1 command, Double = 2, Custom = `ceil(energyAmount / 65 000)`).
 
 **Q: My IP is blocked — what should I do?**  
 A: Contact support via Telegram with your IP address to get it unblocked.

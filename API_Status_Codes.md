@@ -26,8 +26,8 @@
 | `400` | Bad Request | Request is missing fields or has an invalid format |
 | `401` | Unauthorized | API Key is missing, invalid, or expired |
 | `422` | Unprocessable Entity | Request is valid but cannot be executed (quota exhausted, contract expired...) |
-| `429` | Too Many Requests | Rate limit exceeded |
-| `500` | Internal Server Error | Internal system error |
+| `429` | Too Many Requests | More than 15 requests/second from your IP, or IP blocked |
+| `500` | Internal Server Error | Internal system error, or the TRON delegate backend failed |
 
 ---
 
@@ -48,6 +48,21 @@
 ```
 **Cause:** The `walletAddress` field is empty or missing from the request body.  
 **Resolution:** Check the request body and ensure `walletAddress` is not empty.
+
+---
+
+#### `INVALID_ENERGY_AMOUNT`
+```json
+{
+  "success": false,
+  "data": null,
+  "errorCode": "INVALID_ENERGY_AMOUNT",
+  "message": "EnergyAmount must be between 65000 and 1000000."
+}
+```
+**Endpoint:** `POST /api/v1/resources/custom-energy` only.  
+**Cause:** `energyAmount` is missing, ≤ 0, or outside the allowed range of **65,000 – 1,000,000** Energy per request.  
+**Resolution:** Send an `energyAmount` within the limits. No command is deducted.
 
 ---
 
@@ -145,9 +160,52 @@
 ```
 **Cause:** The Contract has used up all its allocated commands.
 - Single: costs 1 command
-- Double: costs 2 commands  
+- Double: costs 2 commands
+- Custom: costs `ceil(energyAmount / 65 000)` commands (e.g. 200,000 Energy = 4 commands)  
 
 **Resolution:** Contact the admin to top up commands for the Contract.
+
+---
+
+### 🔴 429 — Too Many Requests
+
+---
+
+> There is **no hourly or daily request limit** per API Key — only the per-IP rate below.
+
+---
+
+#### `IP_BLOCKED`
+```json
+{
+  "success": false,
+  "data": null,
+  "errorCode": "IP_BLOCKED",
+  "message": "Your IP has been blocked. Contact support if this is a mistake."
+}
+```
+**Cause:** Your IP was automatically blocked by the system due to abnormal behavior (repeatedly exceeding 15 requests/second, too many failed auth attempts).  
+**Response headers included:** `Retry-After: 3600`  
+**Resolution:** Contact support with your IP address to get it unblocked.
+
+---
+
+#### `TOO_MANY_REQUESTS`
+```json
+{
+  "success": false,
+  "data": null,
+  "errorCode": "TOO_MANY_REQUESTS",
+  "message": "Too many requests. Your IP will be temporarily blocked."
+}
+```
+**Cause:** The IP exceeded 15 requests/second — the DDoS detection threshold.  
+**Response headers included:** `Retry-After: 60`  
+**Resolution:** Reduce your API call frequency. The IP is then blocked: **1 minute** for the first violation, **1 hour** for the second, **permanently** from the third (violations are remembered for 30 days).
+
+---
+
+### 🔴 500 — Internal Server Error
 
 ---
 
@@ -165,62 +223,6 @@
 - Retry after a few seconds
 - If the error persists (> 5 minutes), contact support with the `requestId`
 - **Note:** Commands are **NOT deducted** when `EXTERNAL_ERROR` occurs
-
----
-
-### 🔴 429 — Too Many Requests
-
----
-
-#### `RATE_LIMIT_EXCEEDED`
-```json
-{
-  "success": false,
-  "data": null,
-  "errorCode": "RATE_LIMIT_EXCEEDED",
-  "message": "Rate limit exceeded. Please try again later."
-}
-```
-**Cause:** The API Key has exceeded the allowed number of commands per hour.  
-**Response headers included:**
-```http
-X-RateLimit-Limit: 1000
-X-RateLimit-Reset: 2026-04-12T02:00:00.000Z
-Retry-After: 1847
-```
-**Resolution:** Wait until `X-RateLimit-Reset` or after `Retry-After` seconds.
-
----
-
-#### `IP_BLOCKED`
-```json
-{
-  "success": false,
-  "data": null,
-  "errorCode": "IP_BLOCKED",
-  "message": "Your IP has been blocked. Contact support if this is a mistake."
-}
-```
-**Cause:** Your IP was automatically blocked by the system due to abnormal behavior (too many requests in a short time, too many failed auth attempts).  
-**Resolution:** Contact support with your IP address to get it unblocked.
-
----
-
-#### `TOO_MANY_REQUESTS`
-```json
-{
-  "success": false,
-  "data": null,
-  "errorCode": "TOO_MANY_REQUESTS",
-  "message": "Too many requests. Your IP will be temporarily blocked."
-}
-```
-**Cause:** The IP exceeded 15 requests/second — the DDoS detection threshold.  
-**Resolution:** Reduce your API call frequency. The IP will be automatically unblocked after 1–60 minutes depending on the number of violations.
-
----
-
-### 🔴 500 — Internal Server Error
 
 ---
 
@@ -248,7 +250,7 @@ Call API
   │
   ├─ 200 ──→ Execute the TRON transaction within 5 minutes ✅
   │
-  ├─ 400 ──→ Fix the request, do not retry
+  ├─ 400 ──→ Fix the request, do not retry (incl. INVALID_ENERGY_AMOUNT)
   │
   ├─ 401 ──→ Check API Key
   │            ├─ MISSING_AUTH     → Add Authorization header
@@ -257,12 +259,15 @@ Call API
   ├─ 422 ──→ Cannot be processed
   │            ├─ CONTRACT_NOT_FOUND    → Contact admin
   │            ├─ CONTRACT_EXPIRED     → Contact admin to renew
-  │            ├─ INSUFFICIENT_COMMANDS → Contact admin to top up
-  │            └─ EXTERNAL_ERROR       → Retry after 5s (max 3 attempts)
+  │            └─ INSUFFICIENT_COMMANDS → Contact admin to top up
   │
-  ├─ 429 ──→ Wait per Retry-After header then retry
+  ├─ 429 ──→ Too many requests
+  │            ├─ TOO_MANY_REQUESTS → Slow down, wait per Retry-After header
+  │            └─ IP_BLOCKED        → Contact support
   │
-  └─ 500 ──→ Retry after 10s (max 3 attempts) → Contact support
+  └─ 500 ──→ Retry, then contact support
+               ├─ EXTERNAL_ERROR → Retry after 5s (max 3 attempts)
+               └─ INTERNAL_ERROR → Retry after 10s (max 3 attempts)
 ```
 
 ---
@@ -272,6 +277,7 @@ Call API
 | Error Code | Should Retry? | Wait Time |
 |------------|--------------|-----------|
 | `WALLET_REQUIRED` | ❌ No | — |
+| `INVALID_ENERGY_AMOUNT` | ❌ No | — |
 | `BAD_REQUEST` | ❌ No | — |
 | `MISSING_AUTH` | ❌ No | — |
 | `INVALID_API_KEY` | ❌ No | — |
@@ -279,7 +285,6 @@ Call API
 | `CONTRACT_EXPIRED` | ❌ No | — |
 | `INSUFFICIENT_COMMANDS` | ❌ No | — |
 | `EXTERNAL_ERROR` | ✅ Yes | 5s, max 3 attempts |
-| `RATE_LIMIT_EXCEEDED` | ✅ Yes | Per `Retry-After` |
 | `TOO_MANY_REQUESTS` | ✅ Yes | 60s |
 | `IP_BLOCKED` | ❌ No (contact support) | — |
 | `INTERNAL_ERROR` | ✅ Yes | 10s, max 3 attempts |
@@ -290,9 +295,9 @@ Call API
 
 | Scenario | Command deducted? |
 |----------|-------------------|
-| Successful request (200) | ✅ 1 or 2 commands deducted |
+| Successful request (200) | ✅ `data.commandsCharged` commands deducted (Single 1, Double 2, Custom `ceil(energyAmount / 65 000)`) |
 | `EXTERNAL_ERROR` | ❌ Not deducted |
 | `INTERNAL_ERROR` | ❌ Not deducted |
 | `CONTRACT_*` | ❌ Not deducted |
-| `RATE_LIMIT_EXCEEDED` | ❌ Not deducted |
-| `401` / `400` | ❌ Not deducted |
+| `TOO_MANY_REQUESTS` / `IP_BLOCKED` | ❌ Not deducted |
+| `401` / `400` (incl. `INVALID_ENERGY_AMOUNT`) | ❌ Not deducted |
