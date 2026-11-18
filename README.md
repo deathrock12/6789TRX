@@ -1,6 +1,6 @@
 # API Integration Guide — TRON Network Fee Reduction Service
 
-> **Version:** 1.4 
+> **Version:** 1.4.1 
 > **Base URL:** `https://enterprise-api.watchlist.win`  
 > **Last Updated:** November 2026
 
@@ -267,15 +267,18 @@ POST /api/v1/resources/custom-energy
 
 **Description:** Delegates **exactly the amount of Energy you specify** — for one transaction that needs more (or a specific amount of) Energy than Single/Double, such as a heavy smart contract interaction.
 
-**Commands charged:** `ceil(energyAmount / 65 000)` — the amount is rounded **up** to whole commands:
+**Commands charged:** `ceil(energyAmount / 65,000)` — billing is rounded **up** to whole commands, but you receive **exactly** the `energyAmount` you request (the unused remainder of the last command is not delivered).
 
-| `energyAmount` | Commands charged |
-|----------------|------------------|
-| 65,000 | 1 |
-| 100,000 | 2 |
-| 200,000 | 4 |
-| 1,000,000 | 16 |
-| 1,690,000 (max) | 26 |
+| `energyAmount` requested | Energy delegated | Commands charged | Max Energy for the same charge |
+|---|---|---|---|
+| 65,000 | 65,000 | 1 | 65,000 |
+| 100,000 | 100,000 | 2 | 130,000 |
+| 130,000 | 130,000 | 2 | 130,000 |
+| 200,000 | 200,000 | 4 | 260,000 |
+| 1,000,000 | 1,000,000 | 16 | 1,040,000 |
+| 1,690,000 (max) | 1,690,000 | 26 | 1,690,000 |
+
+> 💡 **Tip:** request a multiple of 65,000 to get full value from every command charged.
 
 **Limits:** `energyAmount` must be between **65,000** and **1,690,000** (65,000 × 26) Energy per request. Requests outside this range are rejected with 400 `INVALID_ENERGY_AMOUNT` and **no command is deducted**.
 
