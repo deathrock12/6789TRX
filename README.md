@@ -1,6 +1,6 @@
 # API Integration Guide — TRON Network Fee Reduction Service
 
-> **Version:** 1.3 
+> **Version:** 1.4 
 > **Base URL:** `https://enterprise-api.watchlist.win`  
 > **Last Updated:** November 2026
 
@@ -122,6 +122,8 @@ All responses return JSON in a unified structure:
 | `200` | Success |
 | `400` | Malformed request or missing field |
 | `401` | Missing or invalid API Key |
+| `404` | Reclaim: the wallet has no delegation from your API Key |
+| `409` | Reclaim: the wallet cannot be reclaimed right now (shared with another contract, or a reclaim is already in progress) |
 | `422` | Valid request but cannot be processed (quota exhausted, contract expired...) |
 | `429` | Too many requests from your IP (> 15 requests/second) or IP blocked |
 | `500` | Internal server error |
@@ -273,8 +275,9 @@ POST /api/v1/resources/custom-energy
 | 100,000 | 2 |
 | 200,000 | 4 |
 | 1,000,000 | 16 |
+| 1,690,000 (max) | 26 |
 
-**Limits:** `energyAmount` must be between **65,000** and **1,000,000** Energy per request. Requests outside this range are rejected with 400 `INVALID_ENERGY_AMOUNT` and **no command is deducted**.
+**Limits:** `energyAmount` must be between **65,000** and **1,690,000** (65,000 × 26) Energy per request. Requests outside this range are rejected with 400 `INVALID_ENERGY_AMOUNT` and **no command is deducted**.
 
 **Bandwidth:** if your contract includes Bandwidth coverage, a Custom request receives the same Bandwidth as a Single request — enough for **1 USDT (TRC-20) transfer** (~350 Bandwidth). Use the delegated Energy in one transaction. Additional transactions on the same wallet, or a single transaction larger than a standard USDT transfer (batch/multi-send, contract deployment, multi-signature...), will burn TRX for Bandwidth at your own cost.
 
@@ -295,7 +298,7 @@ Content-Type: application/json
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `walletAddress` | string | ✅ | TRON wallet address to receive Energy (must start with `T`) |
-| `energyAmount` | integer | ✅ | Amount of Energy to delegate, from **65,000** to **1,000,000** |
+| `energyAmount` | integer | ✅ | Amount of Energy to delegate, from **65,000** to **1,690,000** |
 
 **Response (200 — Success):**
 ```json
@@ -335,6 +338,74 @@ The response fields are the same as [Single Delegate](#41-single-delegate), plus
 | `data.energyAmount` | Energy delegated by this request (only present for Custom) |
 | `data.commandsCharged` | Commands deducted — in the example above `ceil(200 000 / 65 000) = 4`, costing `4 × unitPrice.amount` |
 
+### 4.4 Reclaim (on demand)
+
+```
+POST /api/v1/resources/reclaim
+```
+
+**Description:** Takes back **right now** the Energy (and Bandwidth, if your contract includes it) that we delegated to a wallet, and **returns only after the reclaim is confirmed**. Normally we reclaim automatically — as soon as the delegated Energy has been used, or at the latest 5 minutes after delegation. Call this endpoint when you need to control the exact moment, e.g. **before delegating Energy to the same wallet from another provider**, so our reclaim can never collide with your other delegation.
+
+**How it works:**
+1. We reclaim all Energy (and Bandwidth) we delegated to the wallet for your contract.
+2. We re-check the TRON network until **none of our Energy remains delegated** to the wallet (usually 1–5 seconds, up to ~10 seconds).
+3. Only then do we respond `200` — when you receive it, it is safe to delegate from another provider.
+
+**Billing:**
+- This endpoint **does not deduct any command**.
+- Commands already charged for the reclaimed delegations are **not refunded**, and any unused Energy is lost. Call it only after your transaction has been **confirmed on-chain** — if the transaction is still pending, it may burn TRX for Energy/Bandwidth.
+
+**Request:**
+```http
+POST /api/v1/resources/reclaim
+Authorization: Bearer pas_sk_your_key_here
+Content-Type: application/json
+
+{
+  "walletAddress": "TRxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `walletAddress` | string | ✅ | Wallet that received Energy from your API Key |
+
+**Response (200 — Reclaimed and confirmed):**
+```json
+{
+  "success": true,
+  "data": {
+    "walletAddress": "TRxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "reclaimedRecords": 2,
+    "delegatedEnergyRemaining": 0,
+    "bandwidthReclaimed": true,
+    "reclaimedAt": "2026-11-18T10:15:42.1234567"
+  },
+  "message": null,
+  "errorCode": null,
+  "traceId": "",
+  "timestamp": "2026-11-18T03:15:42.2345678Z"
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `data.walletAddress` | The wallet that was reclaimed |
+| `data.reclaimedRecords` | Number of delegations reclaimed by this call. `0` = nothing left to reclaim (already reclaimed earlier) — still a success, so the call is safe to repeat |
+| `data.delegatedEnergyRemaining` | Energy from us still delegated to the wallet — always `0` on success |
+| `data.bandwidthReclaimed` | `true` if Bandwidth was reclaimed in this call |
+| `data.reclaimedAt` | Time the reclaim was confirmed (UTC+7); `null` when there was nothing to reclaim |
+
+**Errors specific to this endpoint:**
+
+| errorCode | HTTP | Meaning | What to do |
+|-----------|------|---------|------------|
+| `WALLET_NOT_FOUND` | 404 | This wallet never received Energy from your API Key | Check the wallet address |
+| `WALLET_SHARED` | 409 | The wallet also has active delegations from another contract, so it cannot be reclaimed with your key | Wait for them to finish, or contact support |
+| `RECLAIM_IN_PROGRESS` | 409 | A reclaim of this wallet is already running (e.g. our automatic reclaim) | Retry after 2–3 seconds |
+| `RECLAIM_NOT_CONFIRMED` | 500 | The reclaim was sent but not yet confirmed on-chain | Retry the same call after a few seconds — **do not** delegate from another provider until you get `200` |
+| `EXTERNAL_ERROR` | 500 | The reclaim service did not respond | Retry after 5 seconds |
+
 ---
 
 ## 5. Error Handling
@@ -356,13 +427,17 @@ The response fields are the same as [Single Delegate](#41-single-delegate), plus
 | `MISSING_AUTH` | 401 | No Authorization header | Add the header |
 | `INVALID_API_KEY` | 401 | Wrong or disabled API Key | Contact support |
 | `WALLET_REQUIRED` | 400 | `walletAddress` is empty | Check the request |
-| `INVALID_ENERGY_AMOUNT` | 400 | Custom: `energyAmount` missing or outside 65,000 – 1,000,000 | Send an amount within the limits |
+| `INVALID_ENERGY_AMOUNT` | 400 | Custom: `energyAmount` missing or outside 65,000 – 1,690,000 | Send an amount within the limits |
 | `CONTRACT_NOT_FOUND` | 422 | Key has no associated contract | Contact admin |
 | `CONTRACT_EXPIRED` | 422 | Contract has expired | Contact to renew |
 | `INSUFFICIENT_COMMANDS` | 422 | Quota commands exhausted | Contact to top up |
+| `WALLET_NOT_FOUND` | 404 | Reclaim: wallet has no delegation from your API Key | Check the wallet address |
+| `WALLET_SHARED` | 409 | Reclaim: wallet has active delegations from another contract | Contact support |
+| `RECLAIM_IN_PROGRESS` | 409 | Reclaim: a reclaim of this wallet is already running | Retry after 2–3s |
 | `TOO_MANY_REQUESTS` | 429 | More than 15 requests/second from your IP | Slow down, wait per `Retry-After` |
 | `IP_BLOCKED` | 429 | IP blocked after repeated violations | Contact support |
 | `EXTERNAL_ERROR` | 500 | Temporary TRON backend error | Retry after 5s |
+| `RECLAIM_NOT_CONFIRMED` | 500 | Reclaim: sent but not yet confirmed on-chain | Retry after a few seconds |
 | `INTERNAL_ERROR` | 500 | System error | Retry after 10s |
 
 > 📖 Full details for each error code: [API_Status_Codes.md](./API_Status_Codes.md)
@@ -680,7 +755,16 @@ curl -X POST https://enterprise-api.watchlist.win/api/v1/resources/custom-energy
   -d '{"walletAddress": "TRxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "energyAmount": 200000}'
 ```
 
-### 9.4 Postman
+### 9.4 Test Reclaim
+
+```bash
+curl -X POST https://enterprise-api.watchlist.win/api/v1/resources/reclaim \
+  -H "Authorization: Bearer pas_sk_your_key_here" \
+  -H "Content-Type: application/json" \
+  -d '{"walletAddress": "TRxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}'
+```
+
+### 9.5 Postman
 
 Import the collection by creating an environment with:
 
@@ -697,6 +781,9 @@ Then use `{{base_url}}` and the header `Authorization: Bearer {{api_key}}` in al
 
 **Q: What happens if I call the API but don't use the Energy within 5 minutes?**  
 A: The Energy is reclaimed to the pool and the command is still deducted. Make sure your TRON transaction is ready before calling the API.
+
+**Q: I also use another Energy provider for the same wallet. How do I avoid conflicts?**  
+A: Before delegating from the other provider, call [`POST /api/v1/resources/reclaim`](#44-reclaim-on-demand) for that wallet and wait for the `200` response — it is returned only after our Energy has been confirmed reclaimed on-chain. Our automatic reclaim will not touch the wallet while your reclaim call is running.
 
 **Q: Should I use Single or Double?**  
 A: Use Single for standard TRC-20 transfers (USDT, USDC...). Use Double if the transaction involves complex smart contracts or requires 2 consecutive transactions.

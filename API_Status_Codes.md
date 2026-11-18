@@ -25,6 +25,8 @@
 | `200` | Success | Request was processed successfully |
 | `400` | Bad Request | Request is missing fields or has an invalid format |
 | `401` | Unauthorized | API Key is missing, invalid, or expired |
+| `404` | Not Found | Reclaim: the wallet has no delegation from your API Key |
+| `409` | Conflict | Reclaim: the wallet is shared with another contract, or a reclaim is already in progress |
 | `422` | Unprocessable Entity | Request is valid but cannot be executed (quota exhausted, contract expired...) |
 | `429` | Too Many Requests | More than 15 requests/second from your IP, or IP blocked |
 | `500` | Internal Server Error | Internal system error, or the TRON delegate backend failed |
@@ -57,11 +59,11 @@
   "success": false,
   "data": null,
   "errorCode": "INVALID_ENERGY_AMOUNT",
-  "message": "EnergyAmount must be between 65000 and 1000000."
+  "message": "EnergyAmount must be between 65000 and 1690000."
 }
 ```
 **Endpoint:** `POST /api/v1/resources/custom-energy` only.  
-**Cause:** `energyAmount` is missing, ≤ 0, or outside the allowed range of **65,000 – 1,000,000** Energy per request.  
+**Cause:** `energyAmount` is missing, ≤ 0, or outside the allowed range of **65,000 – 1,690,000** Energy per request.  
 **Resolution:** Send an `energyAmount` within the limits. No command is deducted.
 
 ---
@@ -112,6 +114,59 @@
 - Verify the API Key is correct (copy/paste again from the original source)
 - The API Key may have been deactivated by an admin — contact support
 - The key may have exceeded its `ExpiryDays`
+
+---
+
+### 🔴 404 — Not Found
+
+---
+
+#### `WALLET_NOT_FOUND`
+```json
+{
+  "success": false,
+  "data": null,
+  "errorCode": "WALLET_NOT_FOUND",
+  "message": "This wallet has no delegation from your API key."
+}
+```
+**Endpoint:** `POST /api/v1/resources/reclaim` only.  
+**Cause:** The wallet never received Energy from your API Key, so you cannot reclaim it.  
+**Resolution:** Check the wallet address. Do not retry.
+
+---
+
+### 🔴 409 — Conflict
+
+---
+
+#### `WALLET_SHARED`
+```json
+{
+  "success": false,
+  "data": null,
+  "errorCode": "WALLET_SHARED",
+  "message": "This wallet has active delegations from another contract and cannot be reclaimed via your API key."
+}
+```
+**Endpoint:** `POST /api/v1/resources/reclaim` only.  
+**Cause:** The wallet also has active delegations from another contract. A reclaim takes back all of our Energy on the wallet, so it is refused to protect the other contract.  
+**Resolution:** Wait until those delegations finish (at most 5 minutes), or contact support.
+
+---
+
+#### `RECLAIM_IN_PROGRESS`
+```json
+{
+  "success": false,
+  "data": null,
+  "errorCode": "RECLAIM_IN_PROGRESS",
+  "message": "A reclaim for this wallet is already in progress. Please retry in a few seconds."
+}
+```
+**Endpoint:** `POST /api/v1/resources/reclaim` only.  
+**Cause:** Another reclaim of this wallet (for example our automatic reclaim) is running right now.  
+**Resolution:** Retry after 2–3 seconds. The next call usually returns `200` with `reclaimedRecords: 0` (already reclaimed).
 
 ---
 
@@ -226,6 +281,23 @@
 
 ---
 
+#### `RECLAIM_NOT_CONFIRMED`
+```json
+{
+  "success": false,
+  "data": null,
+  "errorCode": "RECLAIM_NOT_CONFIRMED",
+  "message": "Reclaim was sent but not yet confirmed on-chain (65000 Energy still delegated). Please retry."
+}
+```
+**Endpoint:** `POST /api/v1/resources/reclaim` only.  
+**Cause:** The reclaim was sent, but after ~10 seconds the TRON network still shows our Energy delegated to the wallet.  
+**Resolution:**
+- Retry the same call after a few seconds — it is safe to repeat
+- **Do not** delegate from another provider until you receive `200`
+
+---
+
 #### `INTERNAL_ERROR`
 ```json
 {
@@ -256,6 +328,12 @@ Call API
   │            ├─ MISSING_AUTH     → Add Authorization header
   │            └─ INVALID_API_KEY  → Contact admin
   │
+  ├─ 404 ──→ Reclaim: WALLET_NOT_FOUND → Check the wallet address
+  │
+  ├─ 409 ──→ Reclaim
+  │            ├─ WALLET_SHARED       → Wait or contact support
+  │            └─ RECLAIM_IN_PROGRESS → Retry after 2–3s
+  │
   ├─ 422 ──→ Cannot be processed
   │            ├─ CONTRACT_NOT_FOUND    → Contact admin
   │            ├─ CONTRACT_EXPIRED     → Contact admin to renew
@@ -266,6 +344,7 @@ Call API
   │            └─ IP_BLOCKED        → Contact support
   │
   └─ 500 ──→ Retry, then contact support
+               ├─ RECLAIM_NOT_CONFIRMED → Retry the reclaim after a few seconds
                ├─ EXTERNAL_ERROR → Retry after 5s (max 3 attempts)
                └─ INTERNAL_ERROR → Retry after 10s (max 3 attempts)
 ```
@@ -284,6 +363,10 @@ Call API
 | `CONTRACT_NOT_FOUND` | ❌ No | — |
 | `CONTRACT_EXPIRED` | ❌ No | — |
 | `INSUFFICIENT_COMMANDS` | ❌ No | — |
+| `WALLET_NOT_FOUND` | ❌ No | — |
+| `WALLET_SHARED` | ❌ No (wait or contact support) | — |
+| `RECLAIM_IN_PROGRESS` | ✅ Yes | 2–3s |
+| `RECLAIM_NOT_CONFIRMED` | ✅ Yes | 3–5s, until `200` |
 | `EXTERNAL_ERROR` | ✅ Yes | 5s, max 3 attempts |
 | `TOO_MANY_REQUESTS` | ✅ Yes | 60s |
 | `IP_BLOCKED` | ❌ No (contact support) | — |
@@ -301,3 +384,4 @@ Call API
 | `CONTRACT_*` | ❌ Not deducted |
 | `TOO_MANY_REQUESTS` / `IP_BLOCKED` | ❌ Not deducted |
 | `401` / `400` (incl. `INVALID_ENERGY_AMOUNT`) | ❌ Not deducted |
+| `POST /reclaim` (any result) | ❌ Not deducted — and commands already charged for the reclaimed delegations are not refunded |
