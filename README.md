@@ -10,7 +10,7 @@
 > - Delegated Energy is reclaimed **3 minutes** after delegation at the latest (previously 5). A Custom delegation is reclaimed as soon as **90%** of its Energy has been used.
 > - **One active Custom delegation per wallet.** While a wallet still holds Custom Energy that has not been reclaimed, every new Single/Double/Custom request for that wallet is rejected with **409 `WALLET_HAS_ACTIVE_CUSTOM`** (no command deducted). Call [`/reclaim`](#44-reclaim-on-demand) or wait until it is reclaimed, then retry. See [4.3](#43-custom-energy).
 > - Double delegates **~135,000 Energy**.
-> - New field `data.txHashes`: hashes of the delegate transactions on TRON (look them up on Tronscan). `data.data.externalRequestId` is now the delegate transaction hash too.
+> - New field `data.txHashes`: hashes of the delegate transactions on TRON (look them up on Tronscan) — also returned by [Reclaim](#44-reclaim-on-demand) with the reclaim transaction hashes. `data.data.externalRequestId` is now the delegate transaction hash too.
 
 ---
 
@@ -410,7 +410,11 @@ Content-Type: application/json
     "reclaimedRecords": 2,
     "delegatedEnergyRemaining": 0,
     "bandwidthReclaimed": true,
-    "reclaimedAt": "2026-11-18T10:15:42.1234567"
+    "reclaimedAt": "2026-11-18T10:15:42.1234567",
+    "txHashes": [
+      "3c2b1a0f9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d9c8b7a6f5e4d3c2b",
+      "7a6f5e4d3c2b1a0f9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d9c8b7a6f"
+    ]
   },
   "message": null,
   "errorCode": null,
@@ -426,6 +430,7 @@ Content-Type: application/json
 | `data.delegatedEnergyRemaining` | Energy from us still delegated to the wallet — always `0` on success |
 | `data.bandwidthReclaimed` | `true` if Bandwidth was reclaimed in this call |
 | `data.reclaimedAt` | Time the reclaim was confirmed (UTC+7); `null` when there was nothing to reclaim |
+| `data.txHashes` | Hashes of the reclaim (UnDelegateResource) transactions on TRON — the Energy reclaim first (one per source wallet that delegated to you), then the Bandwidth reclaim if any. Look them up on [Tronscan](https://tronscan.org). Empty array `[]` when there was nothing to reclaim |
 
 **Errors specific to this endpoint:**
 
