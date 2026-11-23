@@ -26,7 +26,7 @@
 | `400` | Bad Request | Request is missing fields or has an invalid format |
 | `401` | Unauthorized | API Key is missing, invalid, or expired (including after the contract has ended because all commands were used) |
 | `404` | Not Found | Reclaim: the wallet has no delegation from your API Key |
-| `409` | Conflict | Reclaim: the wallet is shared with another contract, or a reclaim is already in progress |
+| `409` | Conflict | Delegate: the wallet still holds Custom Energy that has not been reclaimed. Reclaim: the wallet is shared with another contract, or a reclaim is already in progress |
 | `422` | Unprocessable Entity | Request is valid but cannot be executed (not enough commands left for this request, contract expired...) |
 | `429` | Too Many Requests | More than 15 requests/second from your IP, or IP blocked |
 | `500` | Internal Server Error | Internal system error, or the TRON delegate backend failed |
@@ -63,7 +63,7 @@
 }
 ```
 **Endpoint:** `POST /api/v1/resources/custom-energy` only.  
-**Cause:** `energyAmount` is missing, ≤ 0, or outside the allowed range of **5,000 – 1,690,000** Energy per request.  
+**Cause:** `energyAmount` is missing, ≤ 0, or outside the allowed range of **65,000 – 1,690,000** Energy per request.  
 **Resolution:** Send an `energyAmount` within the limits. No command is deducted.
 
 ---
@@ -114,7 +114,7 @@
 - Verify the API Key is correct (copy/paste again from the original source)
 - The API Key may have been deactivated by an admin — contact support
 - The key may have exceeded its `ExpiryDays`
-- **Your contract has ended because all commands were used** (message `"API key has expired"`): when the commands left fall below 0.08 (the smallest possible request), the contract ends automatically and the key is deactivated — contact support to top up or renew
+- **Your contract has ended because all commands were used** (message `"API key has expired"`): when the commands left fall below 1 (the smallest possible request), the contract ends automatically and the key is deactivated — contact support to top up or renew
 
 ---
 
@@ -171,6 +171,21 @@
 
 ---
 
+#### `WALLET_HAS_ACTIVE_CUSTOM`
+```json
+{
+  "success": false,
+  "data": null,
+  "errorCode": "WALLET_HAS_ACTIVE_CUSTOM",
+  "message": "This wallet still has custom energy that has not been reclaimed. Call /api/v1/resources/reclaim for this wallet or wait until it is reclaimed (about 3 minutes), then retry."
+}
+```
+**Endpoint:** `POST /api/v1/resources/single`, `/double`, `/custom-energy`.  
+**Cause:** The wallet still holds Custom Energy from an earlier request (from any API key) that has not been reclaimed yet. Custom Energy does not stack, so no new delegation is accepted for that wallet until it is reclaimed. No command is deducted.  
+**Resolution:** Use the current Energy, call `POST /api/v1/resources/reclaim` for the wallet (unused Energy is not refunded), or wait until it is reclaimed automatically (once 90% is used, or after at most 3 minutes), then retry. If one transaction needs more Energy, request the whole amount in a single Custom call (up to 1,690,000).
+
+---
+
 ### 🔴 422 — Unprocessable Entity
 
 > These errors occur when the API Key is valid but the delegate command cannot be executed due to business logic constraints.
@@ -211,17 +226,17 @@
   "success": false,
   "data": null,
   "errorCode": "INSUFFICIENT_COMMANDS",
-  "message": "Insufficient commands: 0.8 remaining, 1 required (Total=40, Used=39.2)."
+  "message": "Insufficient commands: 1.5 remaining, 2 required (Total=40, Used=38.5)."
 }
 ```
-**Cause:** The commands left in the Contract are fewer than this request needs (remaining commands can be fractional, e.g. 0.8).
+**Cause:** The commands left in the Contract are fewer than this request needs (remaining commands can be fractional, e.g. 1.5).
 - Single: needs 1 command
 - Double: needs 2 commands
 - Custom: needs `energyAmount / 65,000` rounded up to 0.01 (e.g. 200,000 Energy = 3.08 commands)  
 
-**Resolution:** Request a smaller Custom amount that fits the remaining commands (e.g. 0.8 commands = up to 52,000 Energy), or contact the admin to top up the Contract.
+**Resolution:** Request a smaller Custom amount that fits the remaining commands (e.g. 1.5 commands = up to 97,500 Energy), or contact the admin to top up the Contract.
 
-> ℹ️ You get `INSUFFICIENT_COMMANDS` only while some commands are still left. Once the commands left fall below **0.08**, the contract ends automatically and every call returns **401 `INVALID_API_KEY`** instead — see [`INVALID_API_KEY`](#invalid_api_key).
+> ℹ️ You get `INSUFFICIENT_COMMANDS` only while some commands are still left. Once the commands left fall below **1**, the contract ends automatically and every call returns **401 `INVALID_API_KEY`** instead — see [`INVALID_API_KEY`](#invalid_api_key).
 
 ---
 
@@ -333,9 +348,10 @@ Call API
   │
   ├─ 404 ──→ Reclaim: WALLET_NOT_FOUND → Check the wallet address
   │
-  ├─ 409 ──→ Reclaim
-  │            ├─ WALLET_SHARED       → Wait or contact support
-  │            └─ RECLAIM_IN_PROGRESS → Retry after 2–3s
+  ├─ 409 ──→ Conflict
+  │            ├─ WALLET_HAS_ACTIVE_CUSTOM → Call /reclaim or wait (≤ 3 min), then retry
+  │            ├─ WALLET_SHARED            → Reclaim: wait or contact support
+  │            └─ RECLAIM_IN_PROGRESS      → Reclaim: retry after 2–3s
   │
   ├─ 422 ──→ Cannot be processed
   │            ├─ CONTRACT_NOT_FOUND    → Contact admin
@@ -369,6 +385,7 @@ Call API
 | `WALLET_NOT_FOUND` | ❌ No | — |
 | `WALLET_SHARED` | ❌ No (wait or contact support) | — |
 | `RECLAIM_IN_PROGRESS` | ✅ Yes | 2–3s |
+| `WALLET_HAS_ACTIVE_CUSTOM` | ✅ Yes, after `/reclaim` or once the Energy is reclaimed | Up to 3 minutes |
 | `RECLAIM_NOT_CONFIRMED` | ✅ Yes | 3–5s, until `200` |
 | `EXTERNAL_ERROR` | ✅ Yes | 5s, max 3 attempts |
 | `TOO_MANY_REQUESTS` | ✅ Yes | 60s |
@@ -386,5 +403,6 @@ Call API
 | `INTERNAL_ERROR` | ❌ Not deducted |
 | `CONTRACT_*` | ❌ Not deducted |
 | `TOO_MANY_REQUESTS` / `IP_BLOCKED` | ❌ Not deducted |
+| `WALLET_HAS_ACTIVE_CUSTOM` (409) | ❌ Not deducted |
 | `401` / `400` (incl. `INVALID_ENERGY_AMOUNT`) | ❌ Not deducted |
 | `POST /reclaim` (any result) | ❌ Not deducted — and commands already charged for the reclaimed delegations are not refunded |
