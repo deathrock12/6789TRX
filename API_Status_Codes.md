@@ -24,10 +24,10 @@
 |-----------|---------|----------------|
 | `200` | Success | Request was processed successfully |
 | `400` | Bad Request | Request is missing fields or has an invalid format |
-| `401` | Unauthorized | API Key is missing, invalid, or expired |
+| `401` | Unauthorized | API Key is missing, invalid, or expired (including after the contract has ended because all commands were used) |
 | `404` | Not Found | Reclaim: the wallet has no delegation from your API Key |
 | `409` | Conflict | Reclaim: the wallet is shared with another contract, or a reclaim is already in progress |
-| `422` | Unprocessable Entity | Request is valid but cannot be executed (quota exhausted, contract expired...) |
+| `422` | Unprocessable Entity | Request is valid but cannot be executed (not enough commands left for this request, contract expired...) |
 | `429` | Too Many Requests | More than 15 requests/second from your IP, or IP blocked |
 | `500` | Internal Server Error | Internal system error, or the TRON delegate backend failed |
 
@@ -59,11 +59,11 @@
   "success": false,
   "data": null,
   "errorCode": "INVALID_ENERGY_AMOUNT",
-  "message": "EnergyAmount must be between 65000 and 1690000."
+  "message": "EnergyAmount must be between 5000 and 1690000."
 }
 ```
 **Endpoint:** `POST /api/v1/resources/custom-energy` only.  
-**Cause:** `energyAmount` is missing, ≤ 0, or outside the allowed range of **65,000 – 1,690,000** Energy per request.  
+**Cause:** `energyAmount` is missing, ≤ 0, or outside the allowed range of **5,000 – 1,690,000** Energy per request.  
 **Resolution:** Send an `energyAmount` within the limits. No command is deducted.
 
 ---
@@ -114,6 +114,7 @@
 - Verify the API Key is correct (copy/paste again from the original source)
 - The API Key may have been deactivated by an admin — contact support
 - The key may have exceeded its `ExpiryDays`
+- **Your contract has ended because all commands were used** (message `"API key has expired"`): when the commands left fall below 0.08 (the smallest possible request), the contract ends automatically and the key is deactivated — contact support to top up or renew
 
 ---
 
@@ -151,7 +152,7 @@
 ```
 **Endpoint:** `POST /api/v1/resources/reclaim` only.  
 **Cause:** The wallet also has active delegations from another contract. A reclaim takes back all of our Energy on the wallet, so it is refused to protect the other contract.  
-**Resolution:** Wait until those delegations finish (at most 5 minutes), or contact support.
+**Resolution:** Wait until those delegations finish (at most 3 minutes), or contact support.
 
 ---
 
@@ -210,15 +211,17 @@
   "success": false,
   "data": null,
   "errorCode": "INSUFFICIENT_COMMANDS",
-  "message": "Insufficient commands remaining in your contract."
+  "message": "Insufficient commands: 0.8 remaining, 1 required (Total=40, Used=39.2)."
 }
 ```
-**Cause:** The Contract has used up all its allocated commands.
-- Single: costs 1 command
-- Double: costs 2 commands
-- Custom: costs `ceil(energyAmount / 65 000)` commands (e.g. 200,000 Energy = 4 commands)  
+**Cause:** The commands left in the Contract are fewer than this request needs (remaining commands can be fractional, e.g. 0.8).
+- Single: needs 1 command
+- Double: needs 2 commands
+- Custom: needs `energyAmount / 65,000` rounded up to 0.01 (e.g. 200,000 Energy = 3.08 commands)  
 
-**Resolution:** Contact the admin to top up commands for the Contract.
+**Resolution:** Request a smaller Custom amount that fits the remaining commands (e.g. 0.8 commands = up to 52,000 Energy), or contact the admin to top up the Contract.
+
+> ℹ️ You get `INSUFFICIENT_COMMANDS` only while some commands are still left. Once the commands left fall below **0.08**, the contract ends automatically and every call returns **401 `INVALID_API_KEY`** instead — see [`INVALID_API_KEY`](#invalid_api_key).
 
 ---
 
@@ -320,13 +323,13 @@
 ```
 Call API
   │
-  ├─ 200 ──→ Execute the TRON transaction within 5 minutes ✅
+  ├─ 200 ──→ Execute the TRON transaction within 3 minutes ✅
   │
   ├─ 400 ──→ Fix the request, do not retry (incl. INVALID_ENERGY_AMOUNT)
   │
   ├─ 401 ──→ Check API Key
   │            ├─ MISSING_AUTH     → Add Authorization header
-  │            └─ INVALID_API_KEY  → Contact admin
+  │            └─ INVALID_API_KEY  → Contact admin (also: contract ended, all commands used)
   │
   ├─ 404 ──→ Reclaim: WALLET_NOT_FOUND → Check the wallet address
   │
@@ -378,7 +381,7 @@ Call API
 
 | Scenario | Command deducted? |
 |----------|-------------------|
-| Successful request (200) | ✅ `data.commandsCharged` commands deducted (Single 1, Double 2, Custom `ceil(energyAmount / 65 000)`) |
+| Successful request (200) | ✅ `data.commandsCharged` commands deducted (Single 1, Double 2, Custom `energyAmount / 65,000` rounded up to 0.01, e.g. 3.08) |
 | `EXTERNAL_ERROR` | ❌ Not deducted |
 | `INTERNAL_ERROR` | ❌ Not deducted |
 | `CONTRACT_*` | ❌ Not deducted |

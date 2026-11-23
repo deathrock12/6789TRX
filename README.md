@@ -1,8 +1,16 @@
 # API Integration Guide — TRON Network Fee Reduction Service
 
-> **Version:** 1.4.1 
+> **Version:** 1.5 
 > **Base URL:** `https://enterprise-api.watchlist.win`  
 > **Last Updated:** November 2026
+
+> 🆕 **What's new in 1.5**
+> - **Custom Energy is billed in fractional commands** (rounded up to 0.01): 200,000 Energy now costs **3.08** commands instead of 4. See [4.3](#43-custom-energy).
+> - Custom minimum lowered from 65,000 to **5,000** Energy (= 0.08 command).
+> - `commandsCharged` and `remainingCommands` can be **decimal numbers** (up to 2 decimals, e.g. `3.08`, `33.92`). If your code parses them as integers, switch to a decimal/float type — see the [Go sample](#84-go).
+> - Delegated Energy is reclaimed **3 minutes** after delegation at the latest (previously 5). A Custom delegation is reclaimed as soon as **90%** of its Energy has been used.
+> - Double delegates **~135,000 Energy**.
+> - New field `data.txHashes`: hashes of the delegate transactions on TRON (look them up on Tronscan). `data.data.externalRequestId` is now the delegate transaction hash too.
 
 ---
 
@@ -36,7 +44,7 @@ The system delegates Energy to your wallet (~0.3s)
     ↓
 You execute the TRON transaction at near-zero cost
     ↓
-After 5 minutes → Energy is automatically reclaimed to the pool
+Once used, or at the latest after 3 minutes → Energy is automatically reclaimed to the pool
 ```
 
 **Savings:** Instead of burning 13–65 TRX per transaction, you pay a much lower service fee.
@@ -48,11 +56,11 @@ After 5 minutes → Energy is automatically reclaimed to the pool
 | Type | Endpoint | Energy Delegated | Commands charged | Use when |
 |------|----------|------------------|------------------|----------|
 | **Single** | `POST /api/v1/resources/single` | Base level **~65,000 Energy** | 1 | Transferring USDT/TRC-20 tokens to a **personal wallet with an existing balance > 0** |
-| **Double** | `POST /api/v1/resources/double` | Double amount **~130,000 Energy** | 2 | Transferring USDT/TRC-20 tokens to an **exchange wallet** or any **wallet with a balance of 0** (first-time activation requires more Energy) |
-| **Custom** | `POST /api/v1/resources/custom-energy` | **Exactly the amount you request** (`energyAmount`) | `ceil(energyAmount / 65 000)` | A single transaction that needs a specific amount of Energy (e.g. a heavy smart contract call, swap) |
+| **Double** | `POST /api/v1/resources/double` | Double amount **~135,000 Energy** | 2 | Transferring USDT/TRC-20 tokens to an **exchange wallet** or any **wallet with a balance of 0** (first-time activation requires more Energy) |
+| **Custom** | `POST /api/v1/resources/custom-energy` | **Exactly the amount you request** (`energyAmount`) | `energyAmount / 65,000`, rounded **up** to 0.01 (e.g. 200,000 → 3.08) | A single transaction that needs a specific amount of Energy (e.g. a heavy smart contract call, swap) |
 
-> ⚠️ **Important:** Energy only exists for **5 minutes** after delegation.  
-> If not used within 5 minutes, the Energy is reclaimed and **the order is still charged**.
+> ⚠️ **Important:** Energy only exists for **3 minutes** after delegation.  
+> If not used within 3 minutes, the Energy is reclaimed and **the order is still charged**.
 
 ---
 
@@ -124,7 +132,7 @@ All responses return JSON in a unified structure:
 | `401` | Missing or invalid API Key |
 | `404` | Reclaim: the wallet has no delegation from your API Key |
 | `409` | Reclaim: the wallet cannot be reclaimed right now (shared with another contract, or a reclaim is already in progress) |
-| `422` | Valid request but cannot be processed (quota exhausted, contract expired...) |
+| `422` | Valid request but cannot be processed (not enough commands left for this request, contract expired...) |
 | `429` | Too many requests from your IP (> 15 requests/second) or IP blocked |
 | `500` | Internal server error |
 
@@ -138,7 +146,7 @@ All responses return JSON in a unified structure:
 POST /api/v1/resources/single
 ```
 
-**Description:** Delegates Energy for 1 standard TRC-20 transaction. Consumes **1 command** from the quota.
+**Description:** Delegates Energy for 1 standard TRC-20 transaction. Consumes **1 command** from the quota — requires at least **1** command remaining.
 
 **Request Headers:**
 ```http
@@ -165,7 +173,7 @@ Content-Type: application/json
     "success": true,
     "data": {
       "requestId": "0HNQ1790C3TET:00000001",
-      "externalRequestId": "56bdd271-b41e-46a7-b3d5-896d9f0f1733",
+      "externalRequestId": "4f6c3b0e9a1d7c2b8e5f0a3d6c9b2e1f4a7d0c3b6e9f2a5d8c1b4e7f0a3d6c9b",
       "timestamp": "2026-11-13T10:57:39.4835705"
     },
     "errorMessage": null,
@@ -174,6 +182,9 @@ Content-Type: application/json
     "resourceType": 1,
     "commandsCharged": 1,
     "remainingCommands": 39,
+    "txHashes": [
+      "4f6c3b0e9a1d7c2b8e5f0a3d6c9b2e1f4a7d0c3b6e9f2a5d8c1b4e7f0a3d6c9b"
+    ],
     "unitPrice": {
       "amount": 1.7,
       "currency": "TRX"
@@ -190,17 +201,20 @@ Content-Type: application/json
 | Field | Description |
 |-------|-------------|
 | `data.requestId` | ID for tracing/debugging the request |
-| `data.data.externalRequestId` | ID of the delegation on our TRON backend — include it when contacting support |
+| `data.data.externalRequestId` | Hash of the (first) delegate transaction on TRON — include it when contacting support. In rare cases where the hash is unavailable it is an internal ID (UUID) |
 | `data.data.timestamp` | Time the Energy was delegated (UTC+7) |
 | `data.processingTimeMs` | Processing time (ms) |
 | `data.resourceType` | `1` = Single, `2` = Double, `4` = Custom |
-| `data.commandsCharged` | Commands deducted by **this** request (Single = 1, Double = 2, Custom = see [4.3](#43-custom-energy)) |
-| `data.remainingCommands` | Commands remaining in your contract **after** this request |
+| `data.commandsCharged` | Commands deducted by **this** request (Single = 1, Double = 2, Custom = see [4.3](#43-custom-energy)). Number, up to 2 decimals |
+| `data.remainingCommands` | Commands remaining in your contract **after** this request. Number, up to 2 decimals (e.g. `39`, `33.92`) |
+| `data.txHashes` | Hashes of the Energy delegate transactions on TRON — look them up on [Tronscan](https://tronscan.org). Usually **1** hash; a large request may be split into **several** delegate transactions, one hash each. Empty `[]` if the hashes could not be retrieved (the Energy may still have been delegated — check the wallet's resources) |
 | `data.unitPrice.amount` | Unit price per command as stated in your contract (rounded to 2 decimals) |
 | `data.unitPrice.currency` | Currency of the unit price, as stated in your contract (`TRX` or `USDT`) |
 
 > 💡 `unitPrice` is the price **per command**. A request costs `commandsCharged × unitPrice.amount` — e.g. a Double request consumes 2 commands, so it costs `2 × unitPrice.amount`.  
 > The price is returned in your contract's own currency — it is **not** converted.
+
+> ⚠️ `commandsCharged` and `remainingCommands` are **decimal numbers** — whole for Single/Double (`1`, `2`), fractional once you use Custom (`3.08`, `33.92`). Parse them as decimal/float, **not** integer.
 
 ---
 
@@ -210,7 +224,9 @@ Content-Type: application/json
 POST /api/v1/resources/double
 ```
 
-**Description:** Delegates double the Energy — for 2 consecutive transactions or 1 complex contract interaction. Consumes **2 commands** from the quota.
+**Description:** Delegates double the Energy for **one** transaction that needs more Energy than a standard transfer — e.g. sending USDT to an exchange wallet or to a wallet with a zero balance. Consumes **2 commands** from the quota — requires at least **2** commands remaining.
+
+> ⚠️ Double is **not** meant for 2 separate transactions: once the Energy left on the wallet drops below the Double level (after your first transaction), we reclaim the rest automatically, so a second transaction would burn TRX. For 2 transactions, call Single twice — one call per transaction.
 
 **Request Headers:**
 ```http
@@ -233,7 +249,7 @@ Content-Type: application/json
     "success": true,
     "data": {
       "requestId": "0HNQ1790C3TET:00000002",
-      "externalRequestId": "8f0c2a91-3d4e-4b7a-9c1e-2f6a7b8c9d0e",
+      "externalRequestId": "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90",
       "timestamp": "2026-11-13T10:58:12.1020345"
     },
     "errorMessage": null,
@@ -242,6 +258,9 @@ Content-Type: application/json
     "resourceType": 2,
     "commandsCharged": 2,
     "remainingCommands": 37,
+    "txHashes": [
+      "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
+    ],
     "unitPrice": {
       "amount": 1.7,
       "currency": "TRX"
@@ -267,20 +286,24 @@ POST /api/v1/resources/custom-energy
 
 **Description:** Delegates **exactly the amount of Energy you specify** — for one transaction that needs more (or a specific amount of) Energy than Single/Double, such as a heavy smart contract interaction.
 
-**Commands charged:** `ceil(energyAmount / 65,000)` — billing is rounded **up** to whole commands, but you receive **exactly** the `energyAmount` you request (the unused remainder of the last command is not delivered).
+**Commands charged:** `ceil(energyAmount × 100 / 65,000) / 100` — i.e. `energyAmount / 65,000` rounded **up** to 2 decimals. You pay only for the Energy you request, and you receive **exactly** that `energyAmount`.
 
-| `energyAmount` requested | Energy delegated | Commands charged | Max Energy for the same charge |
-|---|---|---|---|
-| 65,000 | 65,000 | 1 | 65,000 |
-| 100,000 | 100,000 | 2 | 130,000 |
-| 130,000 | 130,000 | 2 | 130,000 |
-| 200,000 | 200,000 | 4 | 260,000 |
-| 1,000,000 | 1,000,000 | 16 | 1,040,000 |
-| 1,690,000 (max) | 1,690,000 | 26 | 1,690,000 |
+| `energyAmount` requested | Energy delegated | Commands charged |
+|---|---|---|
+| 5,000 (min) | 5,000 | 0.08 |
+| 20,000 | 20,000 | 0.31 |
+| 65,000 | 65,000 | 1 |
+| 100,000 | 100,000 | 1.54 |
+| 130,000 | 130,000 | 2 |
+| 200,000 | 200,000 | 3.08 |
+| 1,000,000 | 1,000,000 | 15.39 |
+| 1,690,000 (max) | 1,690,000 | 26 |
 
-> 💡 **Tip:** request a multiple of 65,000 to get full value from every command charged.
+**Remaining commands:** a Custom request is accepted as long as `remainingCommands` covers its charge — e.g. with 0.80 commands left you can still request up to 52,000 Energy (0.80), while Single/Double are rejected with 422 `INSUFFICIENT_COMMANDS`.
 
-**Limits:** `energyAmount` must be between **65,000** and **1,690,000** (65,000 × 26) Energy per request. Requests outside this range are rejected with 400 `INVALID_ENERGY_AMOUNT` and **no command is deducted**.
+**Reclaim:** a Custom delegation is reclaimed as soon as **90%** of its Energy has been used, or at the latest **3 minutes** after delegation.
+
+**Limits:** `energyAmount` must be between **5,000** and **1,690,000** (65,000 × 26) Energy per request. Requests outside this range are rejected with 400 `INVALID_ENERGY_AMOUNT` and **no command is deducted**.
 
 **Bandwidth:** if your contract includes Bandwidth coverage, a Custom request receives the same Bandwidth as a Single request — enough for **1 USDT (TRC-20) transfer** (~350 Bandwidth). Use the delegated Energy in one transaction. Additional transactions on the same wallet, or a single transaction larger than a standard USDT transfer (batch/multi-send, contract deployment, multi-signature...), will burn TRX for Bandwidth at your own cost.
 
@@ -301,7 +324,7 @@ Content-Type: application/json
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `walletAddress` | string | ✅ | TRON wallet address to receive Energy (must start with `T`) |
-| `energyAmount` | integer | ✅ | Amount of Energy to delegate, from **65,000** to **1,690,000** |
+| `energyAmount` | integer | ✅ | Amount of Energy to delegate, from **5,000** to **1,690,000** |
 
 **Response (200 — Success):**
 ```json
@@ -311,16 +334,20 @@ Content-Type: application/json
     "success": true,
     "data": {
       "requestId": "0HNQ1790C3TET:00000003",
-      "externalRequestId": "c3d9e1f2-7a4b-4c8d-9e0f-1a2b3c4d5e6f",
+      "externalRequestId": "9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d9c8b7a6f5e4d3c2b1a0f9e8d",
       "timestamp": "2026-11-17T15:30:12.3450000"
     },
     "errorMessage": null,
     "requestId": "0HNQ1790C3TET:00000003",
     "processingTimeMs": 341,
     "resourceType": 4,
-    "commandsCharged": 4,
+    "commandsCharged": 3.08,
     "energyAmount": 200000,
-    "remainingCommands": 33,
+    "remainingCommands": 33.92,
+    "txHashes": [
+      "9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d9c8b7a6f5e4d3c2b1a0f9e8d",
+      "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"
+    ],
     "unitPrice": {
       "amount": 1.7,
       "currency": "TRX"
@@ -339,7 +366,8 @@ The response fields are the same as [Single Delegate](#41-single-delegate), plus
 | Field | Description |
 |-------|-------------|
 | `data.energyAmount` | Energy delegated by this request (only present for Custom) |
-| `data.commandsCharged` | Commands deducted — in the example above `ceil(200 000 / 65 000) = 4`, costing `4 × unitPrice.amount` |
+| `data.commandsCharged` | Commands deducted — in the example above `ceil(200 000 × 100 / 65 000) / 100 = 3.08`, costing `3.08 × unitPrice.amount` |
+| `data.txHashes` | In the example above the 200,000 Energy was delivered in **2** delegate transactions. The total delegated is always `energyAmount`, however many transactions it takes |
 
 ### 4.4 Reclaim (on demand)
 
@@ -347,7 +375,7 @@ The response fields are the same as [Single Delegate](#41-single-delegate), plus
 POST /api/v1/resources/reclaim
 ```
 
-**Description:** Takes back **right now** the Energy (and Bandwidth, if your contract includes it) that we delegated to a wallet, and **returns only after the reclaim is confirmed**. Normally we reclaim automatically — as soon as the delegated Energy has been used, or at the latest 5 minutes after delegation. Call this endpoint when you need to control the exact moment, e.g. **before delegating Energy to the same wallet from another provider**, so our reclaim can never collide with your other delegation.
+**Description:** Takes back **right now** the Energy (and Bandwidth, if your contract includes it) that we delegated to a wallet, and **returns only after the reclaim is confirmed**. Normally we reclaim automatically — as soon as the delegated Energy has been used, or at the latest 3 minutes after delegation. Call this endpoint when you need to control the exact moment, e.g. **before delegating Energy to the same wallet from another provider**, so our reclaim can never collide with your other delegation.
 
 **How it works:**
 1. We reclaim all Energy (and Bandwidth) we delegated to the wallet for your contract.
@@ -428,12 +456,12 @@ Content-Type: application/json
 | errorCode | HTTP | Cause | Resolution |
 |-----------|------|-------|------------|
 | `MISSING_AUTH` | 401 | No Authorization header | Add the header |
-| `INVALID_API_KEY` | 401 | Wrong or disabled API Key | Contact support |
+| `INVALID_API_KEY` | 401 | Wrong or disabled API Key — also returned once your contract has **ended** (all commands used) | Contact support to top up / renew |
 | `WALLET_REQUIRED` | 400 | `walletAddress` is empty | Check the request |
-| `INVALID_ENERGY_AMOUNT` | 400 | Custom: `energyAmount` missing or outside 65,000 – 1,690,000 | Send an amount within the limits |
+| `INVALID_ENERGY_AMOUNT` | 400 | Custom: `energyAmount` missing or outside 5,000 – 1,690,000 | Send an amount within the limits |
 | `CONTRACT_NOT_FOUND` | 422 | Key has no associated contract | Contact admin |
 | `CONTRACT_EXPIRED` | 422 | Contract has expired | Contact to renew |
-| `INSUFFICIENT_COMMANDS` | 422 | Quota commands exhausted | Contact to top up |
+| `INSUFFICIENT_COMMANDS` | 422 | Not enough commands left for this request (Single needs ≥ 1, Double ≥ 2, Custom ≥ its charge) | Request a smaller Custom amount, or top up |
 | `WALLET_NOT_FOUND` | 404 | Reclaim: wallet has no delegation from your API Key | Check the wallet address |
 | `WALLET_SHARED` | 409 | Reclaim: wallet has active delegations from another contract | Contact support |
 | `RECLAIM_IN_PROGRESS` | 409 | Reclaim: a reclaim of this wallet is already running | Retry after 2–3s |
@@ -454,10 +482,10 @@ There is **no hourly or daily request limit** per API Key. The system has **2 in
 | Type | Limit | When exceeded |
 |------|-------|---------------|
 | **IP request rate** | **15 requests/second** per IP | 429 `TOO_MANY_REQUESTS`, then the IP is temporarily blocked |
-| **Contract Quota** | Commands in your contract (see `remainingCommands` in the response body) | 422 `INSUFFICIENT_COMMANDS` |
+| **Contract Quota** | Commands in your contract (see `remainingCommands` in the response body) | 422 `INSUFFICIENT_COMMANDS`; once fully used, the contract ends → 401 `INVALID_API_KEY` |
 
 - **IP request rate** — exceeding 15 requests/second blocks your IP: **1 minute** for the first violation, **1 hour** for the second, and **permanently** from the third (violation history is kept for 30 days). While blocked, every request returns 429 `IP_BLOCKED`. Both 429 responses include a `Retry-After` header (seconds). If you need a high request rate, queue your calls on your side.
-- **Contract Quota** — total commands in your contract (counted from `EffectiveDate`). Every successful Single/Double/Custom response returns `data.commandsCharged` and `data.remainingCommands` — the commands left **after** that request. When exhausted, the API returns 422 `INSUFFICIENT_COMMANDS`. Contact [@askemily](https://t.me/askemily) to top up.
+- **Contract Quota** — total commands in your contract (counted from `EffectiveDate`). Every successful Single/Double/Custom response returns `data.commandsCharged` and `data.remainingCommands` — the commands left **after** that request (may be fractional, e.g. `33.92`). When the commands left are fewer than a request needs, the API returns 422 `INSUFFICIENT_COMMANDS`. When the commands left after a request fall below the smallest possible request (**0.08** command = a 5,000 Energy Custom request), the contract **ends automatically** and your API Key is deactivated: further calls return **401 `INVALID_API_KEY`** (`"API key has expired"`), not 422. Contact [@askemily](https://t.me/askemily) to top up.
 
 ---
 
@@ -473,7 +501,7 @@ There is **no hourly or daily request limit** per API Key. The system has **2 in
         ↓
 3. Receive response { success: true, requestId: "..." }
         ↓
-4. Execute the USDT transaction immediately (within 5 minutes)
+4. Execute the USDT transaction immediately (within 3 minutes)
         ↓
 5. Transaction succeeds at near-zero TRX fee ✅
 ```
@@ -516,7 +544,7 @@ async function delegateSingle(walletAddress: string): Promise<string> {
     throw new Error(`[${result.errorCode}] ${result.message}`);
   }
 
-  // Energy has been delegated — execute the TRON transaction within 5 minutes
+  // Energy has been delegated — execute the TRON transaction within 3 minutes
   return result.data.requestId;
 }
 
@@ -597,7 +625,7 @@ def delegate_with_retry(wallet_address: str, max_retries: int = 3) -> dict:
 try:
     data = delegate_with_retry('TRxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')
     print(f'Energy delegated! RequestId: {data["requestId"]}')
-    # → Execute the TRON transaction within 5 minutes
+    # → Execute the TRON transaction within 3 minutes
 except Exception as e:
     print(f'Failed: {e}')
 ```
@@ -651,7 +679,7 @@ function delegateWithRetry(string $walletAddress, int $maxRetries = 3): array {
 try {
     $data = delegateWithRetry('TRxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx');
     echo "Energy delegated! RequestId: " . $data['requestId'];
-    // → Execute the TRON transaction within 5 minutes
+    // → Execute the TRON transaction within 3 minutes
 } catch (Exception $e) {
     echo "Failed: " . $e->getMessage();
 }
@@ -687,9 +715,10 @@ type DelegateResponse struct {
         RequestID         string `json:"requestId"`
         ProcessingTimeMs  int    `json:"processingTimeMs"`
         ResourceType      int    `json:"resourceType"`
-        CommandsCharged   int64  `json:"commandsCharged"`
-        EnergyAmount      *int64 `json:"energyAmount"` // only present for Custom
-        RemainingCommands int64  `json:"remainingCommands"`
+        CommandsCharged   float64 `json:"commandsCharged"`   // decimal, e.g. 3.08
+        EnergyAmount      *int64  `json:"energyAmount"`      // only present for Custom
+        RemainingCommands float64 `json:"remainingCommands"` // decimal, e.g. 33.92
+        TxHashes          []string `json:"txHashes"`         // delegate transaction hashes on TRON
         UnitPrice         *struct {
             Amount   float64 `json:"amount"`
             Currency string  `json:"currency"`
@@ -726,7 +755,7 @@ func main() {
         return
     }
     fmt.Printf("Energy delegated! RequestId: %s\n", result.Data.RequestID)
-    // → Execute the TRON transaction within 5 minutes
+    // → Execute the TRON transaction within 3 minutes
 }
 ```
 
@@ -782,26 +811,32 @@ Then use `{{base_url}}` and the header `Authorization: Bearer {{api_key}}` in al
 
 ## 10. FAQ
 
-**Q: What happens if I call the API but don't use the Energy within 5 minutes?**  
+**Q: What happens if I call the API but don't use the Energy within 3 minutes?**  
 A: The Energy is reclaimed to the pool and the command is still deducted. Make sure your TRON transaction is ready before calling the API.
 
 **Q: I also use another Energy provider for the same wallet. How do I avoid conflicts?**  
 A: Before delegating from the other provider, call [`POST /api/v1/resources/reclaim`](#44-reclaim-on-demand) for that wallet and wait for the `200` response — it is returned only after our Energy has been confirmed reclaimed on-chain. Our automatic reclaim will not touch the wallet while your reclaim call is running.
 
 **Q: Should I use Single or Double?**  
-A: Use Single for standard TRC-20 transfers (USDT, USDC...). Use Double if the transaction involves complex smart contracts or requires 2 consecutive transactions.
+A: Use Single for standard TRC-20 transfers (USDT, USDC...) to a wallet that already holds the token. Use Double for one transfer to an exchange wallet or to a wallet with a zero balance (it needs more Energy). Each call covers **one** transaction — for 2 transactions, call the API twice.
 
 **Q: When should I use Custom instead of Double?**  
-A: Use Custom when one transaction needs a specific amount of Energy that Single/Double do not match — e.g. 200,000 Energy for a heavy smart contract call. You are charged `ceil(energyAmount / 65 000)` commands, shown in `data.commandsCharged`. For ordinary TRC-20 transfers, Single/Double remain the cheapest choice.
+A: Use Custom when one transaction needs a specific amount of Energy that Single/Double do not match — e.g. 200,000 Energy for a heavy smart contract call. You are charged `energyAmount / 65,000` commands rounded up to 0.01 (200,000 Energy = 3.08 commands), shown in `data.commandsCharged`. For ordinary TRC-20 transfers, Single/Double remain the simplest choice.
+
+**Q: How can I verify on-chain that the Energy was delegated?**  
+A: Look up each hash in `data.txHashes` on [Tronscan](https://tronscan.org) — each is a delegate (DelegateResource) transaction to your wallet. A large request may be split into several transactions; together they add up to the Energy requested.
 
 **Q: Is a command deducted for `EXTERNAL_ERROR`?**  
 A: No. Only successful requests (HTTP 200) result in a command being deducted.
 
 **Q: How do I know how many contract quota commands remain?**  
-A: Read `data.remainingCommands` from any successful Single/Double/Custom response — it is the number of commands left **after** that request. When the quota is exhausted, you will receive a 422 `INSUFFICIENT_COMMANDS`. To top up, contact [@askemily](https://t.me/askemily).
+A: Read `data.remainingCommands` from any successful Single/Double/Custom response — it is the number of commands left **after** that request. It can be fractional (e.g. `33.92`) once you use Custom. When the commands left are fewer than a request needs, you will receive a 422 `INSUFFICIENT_COMMANDS`. Once they drop below 0.08, the contract ends and your key returns 401 `INVALID_API_KEY`. To top up, contact [@askemily](https://t.me/askemily).
 
 **Q: How much does each command cost?**  
-A: Read `data.unitPrice` from any successful Single/Double/Custom response. It is the per-command price in your contract's currency (`TRX` or `USDT`), exactly as stated in your contract. Each request costs `data.commandsCharged × unitPrice.amount` (Single = 1 command, Double = 2, Custom = `ceil(energyAmount / 65 000)`).
+A: Read `data.unitPrice` from any successful Single/Double/Custom response. It is the per-command price in your contract's currency (`TRX` or `USDT`), exactly as stated in your contract. Each request costs `data.commandsCharged × unitPrice.amount` (Single = 1 command, Double = 2, Custom = `energyAmount / 65,000` rounded up to 0.01).
+
+**Q: I have less than 1 command left (e.g. 0.46). Can I still use it?**  
+A: Yes — with Custom. Single and Double need at least 1 and 2 commands, but a Custom request is accepted as long as its charge fits, e.g. 0.46 commands = up to 29,900 Energy. Below 0.08 commands nothing can be requested any more, so the contract ends automatically.
 
 **Q: My IP is blocked — what should I do?**  
 A: Contact support via Telegram with your IP address to get it unblocked.
@@ -816,6 +851,7 @@ For any questions about integration, errors, or to obtain an API Key:
 
 When contacting us, please provide:
 - `requestId` from the response (if there is an error)
+- `txHashes` / `externalRequestId` from the response (if Energy was not received)
 - The error code encountered
 - The time the error occurred (UTC+7)
 
