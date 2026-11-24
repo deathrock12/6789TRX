@@ -1,16 +1,11 @@
 # API Integration Guide — TRON Network Fee Reduction Service
 
-> **Version:** 1.5 
+> **Version:** 1.6 
 > **Base URL:** `https://enterprise-api.watchlist.win`  
 > **Last Updated:** November 2026
 
-> 🆕 **What's new in 1.5**
-> - **Custom Energy is billed in fractional commands** (rounded up to 0.01): 200,000 Energy now costs **3.08** commands instead of 4. See [4.3](#43-custom-energy).
-> - `commandsCharged` and `remainingCommands` can be **decimal numbers** (up to 2 decimals, e.g. `3.08`, `33.92`). If your code parses them as integers, switch to a decimal/float type — see the [Go sample](#84-go).
-> - Delegated Energy is reclaimed **3 minutes** after delegation at the latest (previously 5). A Custom delegation is reclaimed as soon as **90%** of its Energy has been used.
-> - **One active Custom delegation per wallet.** While a wallet still holds Custom Energy that has not been reclaimed, every new Single/Double/Custom request for that wallet is rejected with **409 `WALLET_HAS_ACTIVE_CUSTOM`** (no command deducted). Call [`/reclaim`](#44-reclaim-on-demand) or wait until it is reclaimed, then retry. See [4.3](#43-custom-energy).
-> - Double delegates **~135,000 Energy**.
-> - New field `data.txHashes`: hashes of the delegate transactions on TRON (look them up on Tronscan) — also returned by [Reclaim](#44-reclaim-on-demand) with the reclaim transaction hashes. `data.data.externalRequestId` is now the delegate transaction hash too.
+> 🆕 **What's new in 1.6:** When the service is temporarily unavailable you now get a JSON error (`502`/`503` `SERVICE_UNAVAILABLE`, `504` `GATEWAY_TIMEOUT`) instead of an HTML page — see [5](#5-error-handling).  
+> 📋 Full version history: [CHANGELOG.md](./CHANGELOG.md)
 
 ---
 
@@ -135,6 +130,8 @@ All responses return JSON in a unified structure:
 | `422` | Valid request but cannot be processed (not enough commands left for this request, contract expired...) |
 | `429` | Too many requests from your IP (> 15 requests/second) or IP blocked |
 | `500` | Internal server error |
+| `502` / `503` | Service temporarily unavailable (`SERVICE_UNAVAILABLE`) — retry after `Retry-After` seconds |
+| `504` | Gateway timeout (`GATEWAY_TIMEOUT`) — the request **may or may not** have been processed |
 
 ---
 
@@ -476,6 +473,8 @@ Content-Type: application/json
 | `EXTERNAL_ERROR` | 500 | Temporary TRON backend error | Retry after 5s |
 | `RECLAIM_NOT_CONFIRMED` | 500 | Reclaim: sent but not yet confirmed on-chain | Retry after a few seconds |
 | `INTERNAL_ERROR` | 500 | System error | Retry after 10s |
+| `SERVICE_UNAVAILABLE` | 502 / 503 | The service is temporarily unavailable (maintenance or failover) | Retry after `Retry-After` seconds (5s) |
+| `GATEWAY_TIMEOUT` | 504 | The service did not answer in time; the request **may or may not** have been processed | Check the wallet's Energy on Tronscan before retrying — a repeated Single/Double request is charged again |
 
 > 📖 Full details for each error code: [API_Status_Codes.md](./API_Status_Codes.md)
 
@@ -521,6 +520,9 @@ Call API
   ├─ 429 IP_BLOCKED → Contact support
   ├─ 500 EXTERNAL_ERROR → Retry after 5s (max 3 attempts)
   ├─ 500 INTERNAL_ERROR → Retry after 10s (max 3 attempts)
+  ├─ 502/503 SERVICE_UNAVAILABLE → Retry after Retry-After seconds (max 3 attempts)
+  ├─ 504 GATEWAY_TIMEOUT → Check the wallet's Energy first, retry only if it was not delegated
+  ├─ Non-JSON response (e.g. an HTML error page) → Treat as service unavailable, retry after 5s
   └─ 401/400/422 (other) → Do not retry, review your config
 ```
 

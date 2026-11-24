@@ -30,6 +30,8 @@
 | `422` | Unprocessable Entity | Request is valid but cannot be executed (not enough commands left for this request, contract expired...) |
 | `429` | Too Many Requests | More than 15 requests/second from your IP, or IP blocked |
 | `500` | Internal Server Error | Internal system error, or the TRON delegate backend failed |
+| `502` / `503` | Service Unavailable | The service is temporarily unavailable (maintenance or failover) |
+| `504` | Gateway Timeout | The service did not answer in time; the request may or may not have been processed |
 
 ---
 
@@ -333,6 +335,57 @@
 
 ---
 
+### 🔴 502 / 503 / 504 — Service Unavailable / Gateway Timeout
+
+These errors come from the gateway in front of the API, not from the API itself. They use the same JSON structure, with a `traceId` instead of a `requestId` — include it when contacting support.
+
+---
+
+#### `SERVICE_UNAVAILABLE`
+```json
+{
+  "success": false,
+  "data": null,
+  "message": "Service temporarily unavailable, please retry shortly",
+  "errorCode": "SERVICE_UNAVAILABLE",
+  "traceId": "8f3a1c2b9d4e5f60718293a4b5c6d7e8",
+  "timestamp": "2026-11-24T09:31:06+00:00"
+}
+```
+**HTTP status:** `502` or `503`, with a `Retry-After: 5` header.  
+**Cause:** The API is temporarily unreachable (maintenance, restart or failover between servers). The request did **not** reach the API.  
+**Resolution:**
+- Retry after the `Retry-After` delay (5 seconds), up to 3 times
+- If the error persists (> 5 minutes), contact support with the `traceId`
+- **Note:** Commands are **NOT deducted**
+
+---
+
+#### `GATEWAY_TIMEOUT`
+```json
+{
+  "success": false,
+  "data": null,
+  "message": "Upstream timeout, the request may or may not have been processed",
+  "errorCode": "GATEWAY_TIMEOUT",
+  "traceId": "8f3a1c2b9d4e5f60718293a4b5c6d7e8",
+  "timestamp": "2026-11-24T09:33:06+00:00"
+}
+```
+**HTTP status:** `504`  
+**Cause:** The API did not answer within 120 seconds. The request **may or may not** have been processed — Energy may have been delegated and commands deducted.  
+**Resolution:**
+- **Do not retry blindly.** Check the wallet's Energy on Tronscan first; retry only if the Energy was not delegated. A repeated Single/Double request is charged again
+- A repeated Custom request for a wallet that already received Custom Energy returns 409 `WALLET_HAS_ACTIVE_CUSTOM` (no command deducted)
+- Contact support with the `traceId` if unsure
+
+---
+
+#### Non-JSON responses
+In the rare case that the whole service is unreachable, you may receive an HTML error page (e.g. HTTP `530`) instead of JSON. Treat any non-JSON response as `SERVICE_UNAVAILABLE` and retry after 5 seconds.
+
+---
+
 ## Client-Side Error Handling Flowchart
 
 ```
@@ -366,6 +419,10 @@ Call API
                ├─ RECLAIM_NOT_CONFIRMED → Retry the reclaim after a few seconds
                ├─ EXTERNAL_ERROR → Retry after 5s (max 3 attempts)
                └─ INTERNAL_ERROR → Retry after 10s (max 3 attempts)
+  │
+  └─ 502/503/504 ──→ Gateway error
+               ├─ SERVICE_UNAVAILABLE → Retry after Retry-After (5s), max 3 attempts
+               └─ GATEWAY_TIMEOUT     → Check the wallet's Energy before retrying
 ```
 
 ---
