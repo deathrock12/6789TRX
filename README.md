@@ -473,7 +473,7 @@ Content-Type: application/json
 | `EXTERNAL_ERROR` | 500 | Temporary TRON backend error | Retry after 5s |
 | `RECLAIM_NOT_CONFIRMED` | 500 | Reclaim: sent but not yet confirmed on-chain | Retry after a few seconds |
 | `INTERNAL_ERROR` | 500 | System error | Retry after 10s |
-| `SERVICE_UNAVAILABLE` | 502 / 503 | The service is temporarily unavailable (maintenance or failover) | Retry after `Retry-After` seconds (5s) |
+| `SERVICE_UNAVAILABLE` | 502 / 503 | The service is temporarily unavailable (maintenance or failover); usually the request did not reach the API | Retry after `Retry-After` seconds (5s); for Single/Double, check the wallet's Energy first |
 | `GATEWAY_TIMEOUT` | 504 | The service did not answer in time; the request **may or may not** have been processed | Check the wallet's Energy on Tronscan before retrying — a repeated Single/Double request is charged again |
 
 > 📖 Full details for each error code: [API_Status_Codes.md](./API_Status_Codes.md)
@@ -520,9 +520,11 @@ Call API
   ├─ 429 IP_BLOCKED → Contact support
   ├─ 500 EXTERNAL_ERROR → Retry after 5s (max 3 attempts)
   ├─ 500 INTERNAL_ERROR → Retry after 10s (max 3 attempts)
-  ├─ 502/503 SERVICE_UNAVAILABLE → Retry after Retry-After seconds (max 3 attempts)
+  ├─ 502/503 SERVICE_UNAVAILABLE → Retry after Retry-After seconds (max 3 attempts); Single/Double: check the wallet's Energy first
   ├─ 504 GATEWAY_TIMEOUT → Check the wallet's Energy first, retry only if it was not delegated
-  ├─ Non-JSON response (e.g. an HTML error page) → Treat as service unavailable, retry after 5s
+  ├─ Non-JSON response (e.g. an HTML error page)
+  │     ├─ returned immediately → Treat as service unavailable, retry after 5s
+  │     └─ returned after a long wait (e.g. 524) → Treat as GATEWAY_TIMEOUT, check the wallet's Energy first
   └─ 401/400/422 (other) → Do not retry, review your config
 ```
 

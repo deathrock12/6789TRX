@@ -337,7 +337,7 @@
 
 ### 🔴 502 / 503 / 504 — Service Unavailable / Gateway Timeout
 
-These errors come from the gateway in front of the API, not from the API itself. They use the same JSON structure, with a `traceId` instead of a `requestId` — include it when contacting support.
+These errors come from the gateway in front of the API, not from the API itself. They use the same JSON structure but have no `data.requestId` — include the `traceId` when contacting support.
 
 ---
 
@@ -353,11 +353,11 @@ These errors come from the gateway in front of the API, not from the API itself.
 }
 ```
 **HTTP status:** `502` or `503`, with a `Retry-After: 5` header.  
-**Cause:** The API is temporarily unreachable (maintenance, restart or failover between servers). The request did **not** reach the API.  
+**Cause:** The API is temporarily unreachable (maintenance, restart or failover between servers). In most cases the request did not reach the API, but if the API stopped while processing it, the request may already have been processed.  
 **Resolution:**
 - Retry after the `Retry-After` delay (5 seconds), up to 3 times
+- For Single/Double, check the wallet's Energy on Tronscan before retrying — a repeated request is charged again
 - If the error persists (> 5 minutes), contact support with the `traceId`
-- **Note:** Commands are **NOT deducted**
 
 ---
 
@@ -373,7 +373,7 @@ These errors come from the gateway in front of the API, not from the API itself.
 }
 ```
 **HTTP status:** `504`  
-**Cause:** The API did not answer within 120 seconds. The request **may or may not** have been processed — Energy may have been delegated and commands deducted.  
+**Cause:** The API did not answer within 90 seconds. The request **may or may not** have been processed — Energy may have been delegated and commands deducted.  
 **Resolution:**
 - **Do not retry blindly.** Check the wallet's Energy on Tronscan first; retry only if the Energy was not delegated. A repeated Single/Double request is charged again
 - A repeated Custom request for a wallet that already received Custom Energy returns 409 `WALLET_HAS_ACTIVE_CUSTOM` (no command deducted)
@@ -382,7 +382,9 @@ These errors come from the gateway in front of the API, not from the API itself.
 ---
 
 #### Non-JSON responses
-In the rare case that the whole service is unreachable, you may receive an HTML error page (e.g. HTTP `530`) instead of JSON. Treat any non-JSON response as `SERVICE_UNAVAILABLE` and retry after 5 seconds.
+In rare cases you may receive an HTML error page instead of JSON (e.g. HTTP `530` or `524`).
+- If the error came back **immediately**, the request did not reach the API: treat it as `SERVICE_UNAVAILABLE` and retry after 5 seconds.
+- If the error came back **after a long wait** (e.g. `524`), the request may have been processed: treat it as `GATEWAY_TIMEOUT` — check the wallet's Energy before retrying.
 
 ---
 
@@ -422,7 +424,10 @@ Call API
   │
   └─ 502/503/504 ──→ Gateway error
                ├─ SERVICE_UNAVAILABLE → Retry after Retry-After (5s), max 3 attempts
+               │                        (Single/Double: check the wallet's Energy first)
                └─ GATEWAY_TIMEOUT     → Check the wallet's Energy before retrying
+  │
+  └─ Non-JSON ──→ Immediate: retry after 5s · After a long wait (e.g. 524): handle as GATEWAY_TIMEOUT
 ```
 
 ---
