@@ -1,10 +1,10 @@
 # API Integration Guide — TRON Network Fee Reduction Service
 
-> **Version:** 1.6 
+> **Version:** 1.6.1 
 > **Base URL:** `https://enterprise-api.watchlist.win`  
 > **Last Updated:** November 2026
 
-> 🆕 **What's new in 1.6:** When the service is temporarily unavailable you now get a JSON error (`502`/`503` `SERVICE_UNAVAILABLE`, `504` `GATEWAY_TIMEOUT`) instead of an HTML page — see [5](#5-error-handling).  
+> 🆕 **What's new in 1.6.1:** New endpoint [`GET /api/v1/resources/balance`](#45-balance--history): commands left and your recent request history, with cursor pagination.  
 > 📋 Full version history: [CHANGELOG.md](./CHANGELOG.md)
 
 ---
@@ -123,7 +123,7 @@ All responses return JSON in a unified structure:
 | Code | Meaning |
 |------|---------|
 | `200` | Success |
-| `400` | Malformed request or missing field |
+| `400` | Malformed request or missing field (Balance: invalid `cursor`) |
 | `401` | Missing or invalid API Key |
 | `404` | Reclaim: the wallet has no delegation from your API Key |
 | `409` | Delegate: the wallet still holds Custom Energy that has not been reclaimed (`WALLET_HAS_ACTIVE_CUSTOM`). Reclaim: the wallet cannot be reclaimed right now (shared with another contract, or a reclaim is already in progress) |
@@ -163,7 +163,7 @@ Content-Type: application/json
 | `walletAddress` | string | ✅ | TRON wallet address to receive Energy (must start with `T`) |
 
 **Response (200 — Success):**
-```json
+```jsonc
 {
   "success": true,
   "data": {
@@ -183,7 +183,7 @@ Content-Type: application/json
       "4f6c3b0e9a1d7c2b8e5f0a3d6c9b2e1f4a7d0c3b6e9f2a5d8c1b4e7f0a3d6c9b"
     ],
     "unitPrice": {
-      "amount": 1.7,
+      "amount": 1.7, // Example
       "currency": "TRX"
     },
     "usageCount": 0
@@ -239,7 +239,7 @@ Content-Type: application/json
 ```
 
 **Response (200 — Success):**
-```json
+```jsonc
 {
   "success": true,
   "data": {
@@ -259,7 +259,7 @@ Content-Type: application/json
       "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
     ],
     "unitPrice": {
-      "amount": 1.7,
+      "amount": 1.7, // Example
       "currency": "TRX"
     },
     "usageCount": 0
@@ -324,7 +324,7 @@ Content-Type: application/json
 | `energyAmount` | integer | ✅ | Amount of Energy to delegate, from **65,000** to **1,690,000** |
 
 **Response (200 — Success):**
-```json
+```jsonc
 {
   "success": true,
   "data": {
@@ -346,7 +346,7 @@ Content-Type: application/json
       "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"
     ],
     "unitPrice": {
-      "amount": 1.7,
+      "amount": 1.7, // Example
       "currency": "TRX"
     },
     "usageCount": 0
@@ -441,6 +441,124 @@ Content-Type: application/json
 
 ---
 
+### 4.5 Balance & History
+
+```
+GET /api/v1/resources/balance
+```
+
+**Description:** Returns how many commands your API Key has left, together with the history of your **most recent** successful requests (newest first, up to `data.history.maxItems`, currently 1,000). The history is paginated with a **cursor**. This endpoint is read-only: it **does not deduct any command**.
+
+**Request — first page:**
+```http
+GET /api/v1/resources/balance
+Authorization: Bearer pas_sk_your_key_here
+```
+
+**Request — next pages:** pass the `data.history.nextCursor` value from the previous response:
+```http
+GET /api/v1/resources/balance?cursor=NjM5MzExNjE5NjYwMDAwMDAwOmRiYTZhMzUx
+Authorization: Bearer pas_sk_your_key_here
+```
+
+| Query parameter | Type | Required | Description |
+|-----------------|------|----------|-------------|
+| `cursor` | string | ❌ | Omit for the first page. For the next page, send `data.history.nextCursor` from the previous response exactly as received. This is the only query parameter |
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "contract": {
+      "status": "active",
+      "effectiveDate": "2026-11-24T13:06:43Z",
+      "purchasedCommands": 120,
+      "usedCommands": 76,
+      "remainingCommands": 44
+    },
+    "history": {
+      "items": [
+        {
+          "time": "2026-11-25T02:41:08Z",
+          "walletAddress": "TRxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "type": "custom",
+          "energyAmount": 200000,
+          "commands": 3.08,
+          "txHash": "9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a39281706f5e4d3c2b1a0"
+        },
+        {
+          "time": "2026-11-24T13:07:12Z",
+          "walletAddress": "TRxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "type": "double",
+          "energyAmount": null,
+          "commands": 2,
+          "txHash": "a1f09485d6dd9fa589841518aa53da87ea908eab4ce8de6bd39c4c4d169ce463"
+        }
+      ],
+      "limit": 50,
+      "maxItems": 1000,
+      "nextCursor": "NjM5MzExNjE5NjYwMDAwMDAwOmRiYTZhMzUx",
+      "hasMore": true
+    }
+  },
+  "message": null,
+  "errorCode": null,
+  "traceId": "",
+  "timestamp": "2026-11-25T02:45:10.1234567Z"
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `data.contract.status` | `active`, or `expired` once your contract's end date has passed |
+| `data.contract.effectiveDate` | Start date of your current contract (UTC) |
+| `data.contract.purchasedCommands` | Total commands purchased with this API Key, **all contracts** (current and previous) |
+| `data.contract.usedCommands` | Total commands used by successful requests with this API Key, **all contracts**. Can be fractional (e.g. `15.39`) |
+| `data.contract.remainingCommands` | Commands left in your **current** contract — the same quota used to accept or reject your requests (see [6](#6-rate-limit--quota)). Commands left over from a previous contract are not carried over, so this can be less than `purchasedCommands − usedCommands` |
+| `data.history.items` | Successful Single/Double/Custom requests of this API Key (all contracts), **newest first**, limited to the most recent `maxItems`. Failed requests are not listed (they are not charged) |
+| `items[].time` | Time of the request (UTC) |
+| `items[].walletAddress` | Wallet that received the Energy |
+| `items[].type` | `single`, `double` or `custom` |
+| `items[].energyAmount` | Energy requested — Custom only, `null` for Single/Double |
+| `items[].commands` | Commands charged for the request (Custom can be fractional, e.g. `3.08`) |
+| `items[].txHash` | Hash of the delegate transaction on TRON (look it up on [Tronscan](https://tronscan.org)); `null` if not available |
+| `data.history.limit` | Maximum number of items per page (set by us; may change) |
+| `data.history.maxItems` | Maximum number of requests available in the history (set by us; may change). Older requests are not returned, but they are still counted in `usedCommands` |
+| `data.history.hasMore` | `true` if there are older items within the most recent `maxItems` |
+| `data.history.nextCursor` | Pass it as `?cursor=` to get the next (older) page; `null` on the last page |
+
+> ⏱️ **Times:** all times in this endpoint are **UTC** (`Z` suffix).
+
+**Paging through the whole history:**
+
+```text
+cursor = null
+do {
+  res    = GET /api/v1/resources/balance            (first page: no cursor)
+           GET /api/v1/resources/balance?cursor={cursor}   (next pages)
+  save(res.data.history.items)
+  cursor = res.data.history.nextCursor
+} while (res.data.history.hasMore)
+```
+
+When the loop ends you have your most recent `maxItems` requests. If you need older ones, contact support.
+
+- **Send the cursor exactly as received.** It is already URL-safe, so no URL-encoding is needed. Do not build or change it yourself; it is an opaque value and its format may change.
+- **There is no `limit` query parameter.** The page size (`data.history.limit`) is set by us and may change. Rely on `hasMore` and `nextCursor`, not on the number of items per page.
+- **`data.contract` is in every page** and always shows your figures at the moment of that call.
+- **New requests while you are paging:** requests you make after fetching the first page do not show up in the pages you are walking through, so no item is ever repeated. They appear at the top of a new first page. They also count toward `maxItems`, so a few of your oldest requests may drop off the end of the history while you page.
+- **No history yet:** `items` is `[]`, `hasMore` is `false` and `nextCursor` is `null`.
+
+**Errors specific to this endpoint:**
+
+| errorCode | HTTP | Meaning | What to do |
+|-----------|------|---------|------------|
+| `INVALID_CURSOR` | 400 | `cursor` is not a value returned by this endpoint | Omit it to start again from the first page |
+| `CONTRACT_NOT_FOUND` | 422 | Your API Key has no active contract | Contact support |
+
+---
+
 ## 5. Error Handling
 
 **Error structure:**
@@ -460,6 +578,7 @@ Content-Type: application/json
 | `MISSING_AUTH` | 401 | No Authorization header | Add the header |
 | `INVALID_API_KEY` | 401 | Wrong or disabled API Key — also returned once your contract has **ended** (all commands used) | Contact support to top up / renew |
 | `WALLET_REQUIRED` | 400 | `walletAddress` is empty | Check the request |
+| `INVALID_CURSOR` | 400 | Balance: `cursor` is not a value returned by `/balance` | Omit it to start from the first page |
 | `INVALID_ENERGY_AMOUNT` | 400 | Custom: `energyAmount` missing or outside 65,000 – 1,690,000 | Send an amount within the limits |
 | `CONTRACT_NOT_FOUND` | 422 | Key has no associated contract | Contact admin |
 | `CONTRACT_EXPIRED` | 422 | Contract has expired | Contact to renew |
@@ -490,7 +609,7 @@ There is **no hourly or daily request limit** per API Key. The system has **2 in
 | **Contract Quota** | Commands in your contract (see `remainingCommands` in the response body) | 422 `INSUFFICIENT_COMMANDS`; once fully used, the contract ends → 401 `INVALID_API_KEY` |
 
 - **IP request rate** — exceeding 15 requests/second blocks your IP: **1 minute** for the first violation, **1 hour** for the second, and **permanently** from the third (violation history is kept for 30 days). While blocked, every request returns 429 `IP_BLOCKED`. Both 429 responses include a `Retry-After` header (seconds). If you need a high request rate, queue your calls on your side.
-- **Contract Quota** — total commands in your contract (counted from `EffectiveDate`). Every successful Single/Double/Custom response returns `data.commandsCharged` and `data.remainingCommands` — the commands left **after** that request (may be fractional, e.g. `33.92`). When the commands left are fewer than a request needs, the API returns 422 `INSUFFICIENT_COMMANDS`. When the commands left after a request fall below the smallest possible request (**1** command = a Single request or a 65,000 Energy Custom request), the contract **ends automatically** and your API Key is deactivated: further calls return **401 `INVALID_API_KEY`** (`"API key has expired"`), not 422. Contact [@askemily](https://t.me/askemily) to top up.
+- **Contract Quota** — total commands in your contract (counted from `EffectiveDate`). Every successful Single/Double/Custom response returns `data.commandsCharged` and `data.remainingCommands` — the commands left **after** that request (may be fractional, e.g. `33.92`). You can also check them at any time with [`GET /api/v1/resources/balance`](#45-balance--history). When the commands left are fewer than a request needs, the API returns 422 `INSUFFICIENT_COMMANDS`. When the commands left after a request fall below the smallest possible request (**1** command = a Single request or a 65,000 Energy Custom request), the contract **ends automatically** and your API Key is deactivated: further calls return **401 `INVALID_API_KEY`** (`"API key has expired"`), not 422. Contact [@askemily](https://t.me/askemily) to top up.
 
 ---
 
@@ -806,7 +925,18 @@ curl -X POST https://enterprise-api.watchlist.win/api/v1/resources/reclaim \
   -d '{"walletAddress": "TRxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}'
 ```
 
-### 9.5 Postman
+### 9.5 Test Balance
+
+```bash
+curl https://enterprise-api.watchlist.win/api/v1/resources/balance \
+  -H "Authorization: Bearer pas_sk_your_key_here"
+
+# next page
+curl "https://enterprise-api.watchlist.win/api/v1/resources/balance?cursor=NEXT_CURSOR_FROM_PREVIOUS_RESPONSE" \
+  -H "Authorization: Bearer pas_sk_your_key_here"
+```
+
+### 9.6 Postman
 
 Import the collection by creating an environment with:
 
@@ -843,7 +973,7 @@ A: Look up each hash in `data.txHashes` on [Tronscan](https://tronscan.org) — 
 A: No. Only successful requests (HTTP 200) result in a command being deducted.
 
 **Q: How do I know how many contract quota commands remain?**  
-A: Read `data.remainingCommands` from any successful Single/Double/Custom response — it is the number of commands left **after** that request. It can be fractional (e.g. `33.92`) once you use Custom. When the commands left are fewer than a request needs, you will receive a 422 `INSUFFICIENT_COMMANDS`. Once they drop below 1, the contract ends and your key returns 401 `INVALID_API_KEY`. To top up, contact [@askemily](https://t.me/askemily).
+A: Call [`GET /api/v1/resources/balance`](#45-balance--history) at any time — `data.contract.remainingCommands` is the number of commands left, and `data.history` lists your past requests. You can also read `data.remainingCommands` from any successful Single/Double/Custom response — it is the number of commands left **after** that request. It can be fractional (e.g. `33.92`) once you use Custom. When the commands left are fewer than a request needs, you will receive a 422 `INSUFFICIENT_COMMANDS`. Once they drop below 1, the contract ends and your key returns 401 `INVALID_API_KEY`. To top up, contact [@askemily](https://t.me/askemily).
 
 **Q: How much does each command cost?**  
 A: Read `data.unitPrice` from any successful Single/Double/Custom response. It is the per-command price in your contract's currency (`TRX` or `USDT`), exactly as stated in your contract. Each request costs `data.commandsCharged × unitPrice.amount` (Single = 1 command, Double = 2, Custom = `energyAmount / 65,000` rounded up to 0.01).

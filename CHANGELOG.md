@@ -6,6 +6,10 @@ All notable changes to the 6789TRX API and its documentation. The full API refer
 
 ---
 
+## 1.6.1 — November 2026
+
+- New endpoint [`GET /api/v1/resources/balance`](./README.md#45-balance--history): commands left in your current contract, total commands purchased and used by your API Key, and the history of your most recent successful requests (newest first, up to 1,000) with **cursor pagination** (`?cursor=` + `nextCursor`). Times in this endpoint are UTC. No command is deducted. New error `400` `INVALID_CURSOR`.
+
 ## 1.6 — November 2026
 
 - When the service is temporarily unavailable, the API now returns a **JSON error** instead of an HTML page: `502`/`503` `SERVICE_UNAVAILABLE` (with `Retry-After: 5`) and `504` `GATEWAY_TIMEOUT`. On `504` the request may or may not have been processed — check the wallet's Energy before retrying. See [API_Status_Codes.md](./API_Status_Codes.md#-502--503--504--service-unavailable--gateway-timeout).

@@ -23,7 +23,7 @@
 | HTTP Code | Meaning | When it occurs |
 |-----------|---------|----------------|
 | `200` | Success | Request was processed successfully |
-| `400` | Bad Request | Request is missing fields or has an invalid format |
+| `400` | Bad Request | Request is missing fields or has an invalid format (Balance: invalid `cursor`) |
 | `401` | Unauthorized | API Key is missing, invalid, or expired (including after the contract has ended because all commands were used) |
 | `404` | Not Found | Reclaim: the wallet has no delegation from your API Key |
 | `409` | Conflict | Delegate: the wallet still holds Custom Energy that has not been reclaimed. Reclaim: the wallet is shared with another contract, or a reclaim is already in progress |
@@ -81,6 +81,21 @@
 ```
 **Cause:** The request body is not valid JSON, or a field value is invalid.  
 **Resolution:** Verify `Content-Type: application/json` and the format of the request body.
+
+---
+
+#### `INVALID_CURSOR`
+```json
+{
+  "success": false,
+  "data": null,
+  "errorCode": "INVALID_CURSOR",
+  "message": "Invalid cursor. Use the nextCursor value from the previous response, or omit it for the first page."
+}
+```
+**Endpoint:** `GET /api/v1/resources/balance` only.  
+**Cause:** The `cursor` query parameter is not a value returned by this endpoint (changed, truncated or built by hand).  
+**Resolution:** Send `data.history.nextCursor` exactly as received, or omit `cursor` to start again from the first page.
 
 ---
 
@@ -203,7 +218,7 @@
   "message": "No active contract found for this API key."
 }
 ```
-**Cause:** The API Key has not been assigned to any Contract in the system.  
+**Cause:** The API Key has not been assigned to any Contract in the system (also returned by `GET /balance` when the key has no active contract).  
 **Resolution:** Contact the admin to configure a Contract for this API Key.
 
 ---
@@ -396,6 +411,7 @@ Call API
   ├─ 200 ──→ Execute the TRON transaction within 3 minutes ✅
   │
   ├─ 400 ──→ Fix the request, do not retry (incl. INVALID_ENERGY_AMOUNT)
+  │            └─ INVALID_CURSOR → Balance: restart from the first page (no cursor)
   │
   ├─ 401 ──→ Check API Key
   │            ├─ MISSING_AUTH     → Add Authorization header
@@ -439,6 +455,7 @@ Call API
 | `WALLET_REQUIRED` | ❌ No | — |
 | `INVALID_ENERGY_AMOUNT` | ❌ No | — |
 | `BAD_REQUEST` | ❌ No | — |
+| `INVALID_CURSOR` | ❌ No (restart from the first page) | — |
 | `MISSING_AUTH` | ❌ No | — |
 | `INVALID_API_KEY` | ❌ No | — |
 | `CONTRACT_NOT_FOUND` | ❌ No | — |
@@ -468,3 +485,4 @@ Call API
 | `WALLET_HAS_ACTIVE_CUSTOM` (409) | ❌ Not deducted |
 | `401` / `400` (incl. `INVALID_ENERGY_AMOUNT`) | ❌ Not deducted |
 | `POST /reclaim` (any result) | ❌ Not deducted — and commands already charged for the reclaimed delegations are not refunded |
+| `GET /balance` (any result) | ❌ Not deducted |
