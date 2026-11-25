@@ -23,8 +23,10 @@ The TRON network charges transaction fees based on 2 types of resources:
 
 | Resource | Used for | If insufficient |
 |----------|----------|-----------------|
-| **Bandwidth** | All transactions | Costs 0.1 - 2 TRX |
-| **Energy** | Smart contracts (TRC-20 transfer, swap...) | Costs 13–65 TRX/transaction |
+| **Bandwidth** | All transactions | 600 free per account per day; beyond that ~0.35 TRX per USDT transfer |
+| **Energy** | Smart contracts (TRC-20 transfer, swap...) | ~6.5 TRX per USDT transfer (~65,000 Energy), ~13 TRX if the recipient holds no USDT (~130,000 Energy); heavier contract calls cost more |
+
+> Approximate, at the current network rate of 100 sun per Energy and 1,000 sun per Bandwidth byte. TRON governance can change these rates.
 
 To obtain Energy, users typically need to **freeze TRX** (lock capital) or **burn TRX** directly. Both approaches are costly.
 
@@ -42,7 +44,7 @@ You execute the TRON transaction at near-zero cost
 Once used, or at the latest after 3 minutes → Energy is automatically reclaimed to the pool
 ```
 
-**Savings:** Instead of burning 13–65 TRX per transaction, you pay a much lower service fee.
+**Savings:** Instead of burning ~6.5–13 TRX per USDT transfer (more for heavier contract calls), you pay a much lower service fee.
 
 ---
 
