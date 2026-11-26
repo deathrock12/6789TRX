@@ -6,6 +6,10 @@ All notable changes to the 6789TRX API and its documentation. The full API refer
 
 ---
 
+## 1.6.2 — November 2026
+
+- ⚠️ `data.data.timestamp` in [Single](./README.md#41-single-delegate)/[Double](./README.md#42-double-delegate)/[Custom](./README.md#43-custom-energy) responses and `data.reclaimedAt` in [Reclaim](./README.md#44-reclaim-on-demand) responses are now in **UTC** with a `Z` suffix (e.g. `2026-11-13T03:57:39.4835705Z`) instead of UTC+7 without an offset. If you parse or display these times as UTC+7, update your code. All times returned by the API are now UTC.
+
 ## 1.6.1 — November 2026
 
 - New endpoint [`GET /api/v1/resources/balance`](./README.md#45-balance--history): commands left in your current contract, total commands purchased and used by your API Key, and the history of your most recent successful requests (newest first, up to 1,000) with **cursor pagination** (`?cursor=` + `nextCursor`). Times in this endpoint are UTC. No command is deducted. New error `400` `INVALID_CURSOR`.

@@ -1,10 +1,11 @@
 # API Integration Guide — TRON Network Fee Reduction Service
 
-> **Version:** 1.6.1 
+> **Version:** 1.6.2 
 > **Base URL:** `https://enterprise-api.watchlist.win`  
 > **Last Updated:** November 2026
 
-> 🆕 **What's new in 1.6.1:** New endpoint [`GET /api/v1/resources/balance`](#45-balance--history): commands left and your recent request history, with cursor pagination.  
+> 🆕 **What's new in 1.6.2:** ⚠️ `data.data.timestamp` (Single/Double/Custom) and `data.reclaimedAt` (Reclaim) are now in **UTC** (`Z` suffix) instead of UTC+7 — every time returned by the API is now UTC.  
+> **1.6.1:** New endpoint [`GET /api/v1/resources/balance`](#45-balance--history): commands left and your recent request history, with cursor pagination.  
 > 📋 Full version history: [CHANGELOG.md](./CHANGELOG.md)
 
 ---
@@ -173,7 +174,7 @@ Content-Type: application/json
     "data": {
       "requestId": "0HNQ1790C3TET:00000001",
       "externalRequestId": "4f6c3b0e9a1d7c2b8e5f0a3d6c9b2e1f4a7d0c3b6e9f2a5d8c1b4e7f0a3d6c9b",
-      "timestamp": "2026-11-13T10:57:39.4835705"
+      "timestamp": "2026-11-13T03:57:39.4835705Z"
     },
     "errorMessage": null,
     "requestId": "0HNQ1790C3TET:00000001",
@@ -201,7 +202,7 @@ Content-Type: application/json
 |-------|-------------|
 | `data.requestId` | ID for tracing/debugging the request |
 | `data.data.externalRequestId` | Hash of the (first) delegate transaction on TRON — include it when contacting support. In rare cases where the hash is unavailable it is an internal ID (UUID) |
-| `data.data.timestamp` | Time the Energy was delegated (UTC+7) |
+| `data.data.timestamp` | Time the Energy was delegated (UTC, `Z` suffix) |
 | `data.processingTimeMs` | Processing time (ms) |
 | `data.resourceType` | `1` = Single, `2` = Double, `4` = Custom |
 | `data.commandsCharged` | Commands deducted by **this** request (Single = 1, Double = 2, Custom = see [4.3](#43-custom-energy)). Number, up to 2 decimals |
@@ -249,7 +250,7 @@ Content-Type: application/json
     "data": {
       "requestId": "0HNQ1790C3TET:00000002",
       "externalRequestId": "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90",
-      "timestamp": "2026-11-13T10:58:12.1020345"
+      "timestamp": "2026-11-13T03:58:12.1020345Z"
     },
     "errorMessage": null,
     "requestId": "0HNQ1790C3TET:00000002",
@@ -334,7 +335,7 @@ Content-Type: application/json
     "data": {
       "requestId": "0HNQ1790C3TET:00000003",
       "externalRequestId": "9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d9c8b7a6f5e4d3c2b1a0f9e8d",
-      "timestamp": "2026-11-17T15:30:12.3450000"
+      "timestamp": "2026-11-17T08:30:12.3450000Z"
     },
     "errorMessage": null,
     "requestId": "0HNQ1790C3TET:00000003",
@@ -409,7 +410,7 @@ Content-Type: application/json
     "reclaimedRecords": 2,
     "delegatedEnergyRemaining": 0,
     "bandwidthReclaimed": true,
-    "reclaimedAt": "2026-11-18T10:15:42.1234567",
+    "reclaimedAt": "2026-11-18T03:15:42.1234567Z",
     "txHashes": [
       "3c2b1a0f9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d9c8b7a6f5e4d3c2b",
       "7a6f5e4d3c2b1a0f9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d9c8b7a6f"
@@ -428,7 +429,7 @@ Content-Type: application/json
 | `data.reclaimedRecords` | Number of delegations reclaimed by this call. `0` = nothing left to reclaim (already reclaimed earlier) — still a success, so the call is safe to repeat |
 | `data.delegatedEnergyRemaining` | Energy from us still delegated to the wallet — always `0` on success |
 | `data.bandwidthReclaimed` | `true` if Bandwidth was reclaimed in this call |
-| `data.reclaimedAt` | Time the reclaim was confirmed (UTC+7); `null` when there was nothing to reclaim |
+| `data.reclaimedAt` | Time the reclaim was confirmed (UTC, `Z` suffix); `null` when there was nothing to reclaim |
 | `data.txHashes` | Hashes of the reclaim (UnDelegateResource) transactions on TRON — the Energy reclaim first (one per source wallet that delegated to you), then the Bandwidth reclaim if any. Look them up on [Tronscan](https://tronscan.org). Empty array `[]` when there was nothing to reclaim |
 
 **Errors specific to this endpoint:**
@@ -998,7 +999,7 @@ When contacting us, please provide:
 - `requestId` from the response (if there is an error)
 - `txHashes` / `externalRequestId` from the response (if Energy was not received)
 - The error code encountered
-- The time the error occurred (UTC+7)
+- The time the error occurred (UTC)
 
 ---
 
